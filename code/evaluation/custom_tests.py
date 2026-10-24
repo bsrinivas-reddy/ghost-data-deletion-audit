@@ -480,9 +480,16 @@ def t25(root):
     _, alice = a.run();_, bob = b.run()
     check("T25 trace correlation is service-scoped",any(s["resource_id"] == "account_1" for s in alice) and not any(s["resource_id"] == "account_1" for s in bob))
 
+def t26(root):
+    payload = export_json(search=[{"resource_id":"search_1","query":"alice@example.com", "hits":{"total":1,"documents":[{"resource_id":"search_1","email":"alice@example.com"}]}}])
+    write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "",
+                  "evidence_1,evidence/search.json,service_resource_export,2026-09-05T00:00:00Z\n", {"evidence/search.json":payload})
+    status,steps=run(World(root),case("cA","alice@example.com"))
+    check("T26 search hits payload proves presence without a result label",status == "INCOMPLETE" and any(s["phase"] == "FINDING" and s["evidence_id"] == "evidence_1" for s in steps))
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

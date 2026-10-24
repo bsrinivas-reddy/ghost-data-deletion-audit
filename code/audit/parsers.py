@@ -356,7 +356,17 @@ def _parse_json_data(d, file_id, captured_at):
             t = e.get("observed_at", captured_at)
             em, ui, ph, ha = ids_from_deep(e)
             res = str(e.get("result", "")).lower()
-            st = PRESENT if res in ("hit", "found") else ABSENT
+            hits = e.get("hits", {})
+            total = hits.get("total") if isinstance(hits, dict) else None
+            if isinstance(total, dict):
+                total = total.get("value")
+            documents = hits.get("documents", hits.get("hits", [])) if isinstance(hits, dict) else []
+            if documents or isinstance(total, (int, float)) and total > 0 or res in ("hit", "found"):
+                st = PRESENT
+            elif total == 0 or res in ("miss", "not_found", "absent"):
+                st = ABSENT
+            else:
+                st = "UNKNOWN"
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "search_service", e["resource_id"], CAT_SEARCH, st,
                 frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))

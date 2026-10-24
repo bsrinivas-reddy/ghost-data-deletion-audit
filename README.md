@@ -5,7 +5,7 @@ Reads participant-facing evidence, resolves identities, reconstructs resource
 state at audit_at, applies policy and writes ordered findings and next steps.
 
 This is a working but incomplete solution. Current sample status accuracy is
-28/32; ordered sequences match 7/32. Read the evaluation report and generated
+29/32; ordered sequences match 7/32. Read the evaluation report and generated
 uncertainty report before relying on the output. No hidden-test result is known.
 
 ## Setup and run

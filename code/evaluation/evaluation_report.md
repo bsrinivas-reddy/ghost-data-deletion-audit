@@ -20,10 +20,10 @@ python3 code/evaluation/semantic_audit.py output.csv
 | Metric | Result |
 |---|---|
 | Row coverage | 32/32 |
-| Status accuracy | 28/32 (87.5%) |
-| Exact six-field step matches | 143/197 (72.6%) |
+| Status accuracy | 29/32 (90.6%) |
+| Exact six-field step matches | 153/197 (77.7%) |
 | Full ordered step sequences | 7/32 (21.9%) |
-| Position-aligned field accuracy | 684/1214 (56.3%) |
+| Position-aligned field accuracy | 786/1214 (64.7%) |
 
 Step denominator sums the larger predicted/golden step count for each case.
 Fields count the status plus six fields per aligned step (phase, system_id,
@@ -33,12 +33,12 @@ is checked separately. This is not hidden-test accuracy.
 
 Sample cases 01, 02 and 04 have no identity-linked admissible footprint after
 strict temporal filtering, so they are marked INCOMPLETE rather than guessing
-COMPLETE. One additional sample status differs after independent-copy handling. The schema has no UNKNOWN value. This conservative mapping does not
+COMPLETE. The schema has no UNKNOWN value. This conservative mapping does not
 satisfy the full finding/remediation contract when no violation can be proved.
 
 ## Full run
 
-518 rows, 2,515 steps: 159 COMPLETE, 349 INCOMPLETE, 10 NOT_APPLICABLE.
+518 rows, 2,623 steps: 158 COMPLETE, 350 INCOMPLETE, 10 NOT_APPLICABLE.
 The generated `output_uncertainty.md` records unresolved states.
 
 The independent validator currently reports **one contract problem**:
@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-47 checks pass across the custom fixtures in `custom_tests.py`:
+48 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -85,6 +85,8 @@ validate every extracted fact, or establish completeness of discovery.
 - T24: an absent mandatory tombstone is not certified as redacted or given an
   invented recovery operation.
 - T25: concurrent services sharing a trace ID cannot exchange lookup identities.
+- T26: nonempty search hits prove presence even when no result label is supplied.
+  This test failed before the fix and passes after it.
 
 Fault injection: collapsing store IDs makes T15 fail; removing the identity cutoff
 makes T11 fail; removing retention expiry checks makes T17 fail. Disabling scope
@@ -149,8 +151,13 @@ Optional model-path mock tests: 6/6. These are pipeline tests, not live model ca
   and mixed non-deletion/deletion instructions need stronger handling.
 - The primary run has zero model calls. Whether that meets the challenge's
   AI-powered requirement is not established by these metrics.
-- Muse independent review is still pending at the time of this report. No
-  final external-review verdict has been received.
+- Muse reviewed the older build and judged it unsuitable as proof of deletion.
+  Its independently confirmed defects included the timestamp clamp, retained-body
+  PII, unmapped categories, zero-proof COMPLETEs and weak evaluation checks, all
+  now corrected. Its additional search-hits inversion was reproduced with a
+  failing test and fixed. A golden-only analytics DELETE suggestion was not
+  adopted because the category policy requires ANONYMIZE and no general
+  source-backed exception was established. Muse has not re-reviewed this head.
 - Transcript history is separate from prediction quality; no complete authentic
   development log or submission-compliance claim is made here.
 
@@ -170,3 +177,14 @@ informed the design, not hidden labels or extra output operations:
   require source checks and deterministic policy/order emission.
 
 These sources do not establish a globally best architecture or competition rank.
+
+## Independent review follow-through
+
+Muse's saved review was recovered on 2026-10-25 after the original browser
+session ended. No raw development trace or unrelated history is bundled.
+The review is evidence about the old code, not approval of the current code.
+Search exports with hits.total/documents and no result label were wrongly
+classified ABSENT. The parser now honors explicit hit payloads; an unrecognized
+payload remains UNKNOWN, not assumed absent. This changed one full-run status
+and added supported findings. Citation fallback no longer exists; scoped
+absence is reconstructed explicitly and cannot use unscoped empty tables.
