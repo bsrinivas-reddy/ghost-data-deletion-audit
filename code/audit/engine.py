@@ -236,7 +236,16 @@ class CaseAudit:
         return status, steps
 
     def _cite(self, info, want_states):
-        """Latest at/before-audit evidence establishing one of want_states."""
+        """Latest at/before-audit-captured evidence establishing want_states.
+
+        Empirical contract from the golden samples: all 75 manifest-file
+        citations point to files captured at/before the case's audit_at, so
+        pre-audit captures are preferred. State itself is NOT capture-gated:
+        gating state on captured_at drops sample step recall (records whose
+        own timestamp precedes audit_at but whose file was captured later
+        are part of the state at audit_at). Callers fall back to citing the
+        truthful state-establishing observation when no pre-audit capture
+        establishes the state - a case the golden samples never exhibit."""
         best = None
         for o in info["obs"]:
             if o.claim or o.captured_at > self.audit_at:

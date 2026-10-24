@@ -39,7 +39,7 @@ cite at all.)
 ## 3. Custom evaluation cases (participant-created)
 
 `code/evaluation/custom_tests.py`: six synthetic datasets with known ground
-truth run through the real engine. Result: 12/12 checks pass.
+truth run through the real engine. Result: 14/14 checks pass.
 
 1. **T1 - shared-window claim isolation**: two users, overlapping deletion
    windows, one unattributed workflow claim: binds to neither case.
@@ -108,7 +108,13 @@ the engine can bind them without structural changes.
    value-classified extraction.
 3. Findings and COMPLETE verifications could go uncited when the only state
    proof sat in a post-`audit_at` capture - fixed with truthful fallback
-   citation; uncitable COMPLETE verifications are dropped.
+   citation; uncitable COMPLETE verifications are dropped. Admissibility was
+   pinned empirically against the golden samples: all 75 golden manifest
+   citations reference files captured at/before audit_at (so pre-audit
+   captures are preferred for citation), while gating STATE on capture time
+   drops golden step recall (154 -> 147 matched steps) - records whose own
+   timestamp precedes audit_at belong to the state at audit_at even when
+   their file was captured later. T7/T8 pin both directions.
 4. JSON-payload structured logs parsed as key=value - dual-format reader.
 5. Media extractor context windows false-bound neighbouring rows of
    multi-resource consoles - conservative same-line/single-resource policy.
