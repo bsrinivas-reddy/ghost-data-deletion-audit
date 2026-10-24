@@ -1,5 +1,5 @@
 """Deletion-audit engine: reconstruct state at audit_at, apply policy, emit steps."""
-import csv, json, os
+import csv, json, os, sys
 from dataclasses import replace
 from .model import *
 from . import parsers, logparsers, activity, identity, intent
@@ -120,8 +120,29 @@ class CaseAudit:
                     obs.phones & self.idset["phones"] or
                     obs.hashes & self.idset["hashes"])
 
+    def _assisted_intent(self):
+        """Optional model second opinion for requests the deterministic
+        classifier cannot decide. Dormant unless MODEL_ASSIST_BACKEND is set;
+        invalid or unavailable answers fall back to UNKNOWN."""
+        backend = os.environ.get("MODEL_ASSIST_BACKEND", "none")
+        if backend == "none":
+            return "UNKNOWN"
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            import model_assist
+            answer = model_assist.assist("intent", self.case["request_text"], backend=backend)
+        except Exception:
+            return "UNKNOWN"
+        if not answer:
+            return "UNKNOWN"
+        word = answer.strip().split()[0].upper() if answer.strip() else ""
+        return word if word in ("DELETION", "NOT_DELETION", "AMBIGUOUS") else "UNKNOWN"
+
     def run(self):
-        if intent.classify(self.case["request_text"]) != "DELETION":
+        label = intent.classify(self.case["request_text"])
+        if label == "UNKNOWN":
+            label = self._assisted_intent()
+        if label != "DELETION":
             return "NOT_APPLICABLE", []
         w = self.w
         # candidate observations bound to this identity, at/before audit_at

@@ -8,7 +8,14 @@ from the extracted text at run time.
 """
 import csv, json, os, re, subprocess, sys
 
-RES_RE = re.compile(r"\b(account_\d+|tombstone_\d+|search_\d+|cache_\d+|support_\d+|analytics_\d+|telemetry_\d+|data_flow_\d+|backup_\d+|audit_record_\d+|export_\d+|marketing_\d+|object_\d+|legal_hold_\d+|email_log_\d+|secondary_\d+)\b")
+PREFIXES = ("account", "tombstone", "search", "cache", "support", "analytics",
+            "telemetry", "data_flow", "backup", "audit_record", "export",
+            "marketing", "object", "legal_hold", "email_log", "secondary")
+# OCR sometimes drops or substitutes the underscore before the digits
+RES_RE = re.compile(r"\b(" + "|".join(PREFIXES) + r")[_.\-]?(\d+)\b")
+
+def _canon(m):
+    return f"{m.group(1)}_{m.group(2)}"
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 UID_RE = re.compile(r"\buser_\d+\b")
 PHONE_RE = re.compile(r"\+\d[\d ()-]{6,}\d")
@@ -82,7 +89,7 @@ def parse_records(text, source_ext=""):
     """
     records = {}
     mentions = list(RES_RE.finditer(text))
-    distinct = {m.group(1) for m in mentions}
+    distinct = {_canon(m) for m in mentions}
     # A document about a single resource: every identifier in it belongs to
     # that resource (label/value layouts scatter them across blocks).
     single = len(distinct) <= 1
@@ -103,7 +110,7 @@ def parse_records(text, source_ext=""):
             hi += 1
         return "\n".join(lines[lo:hi + 1])
     for m in mentions:
-        rid = m.group(1)
+        rid = _canon(m)
         li = bisect.bisect_right(line_starts, m.start()) - 1
         seg = lines[li]
         if single:

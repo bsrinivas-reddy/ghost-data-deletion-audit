@@ -8,3 +8,4 @@ __pycache__/
 venv/
 agent-trace/
 code/extracted/
+warnings.txt

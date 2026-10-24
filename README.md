@@ -36,3 +36,25 @@ No external APIs, accounts, or keys required. Pure Python 3 standard library.
 
 Working deterministic core. Sample-set validation is in progress; current
 scores and known limitations are tracked in `code/evaluation/evaluation_report.md`.
+
+## Optional model-assisted pass
+
+The deterministic engine decides every input on its own. `code/model_assist.py`
+adds two optional, measured assists on runtime inputs only: a second opinion
+for request texts the rule-based classifier cannot decide, and structuring of
+noisy OCR text. Both are off by default (`MODEL_ASSIST_BACKEND=none`) and
+policy decisions never depend on model output.
+
+    export GEMINI_API_KEY=...        # free Google AI Studio tier is sufficient
+    MODEL_ASSIST_BACKEND=gemini python3 code/main.py dataset output.csv
+
+Real per-call token counts from the API response land in
+`code/evaluation/usage_log.jsonl`, and `code/evaluation/usage_report.md` is
+regenerated from that log (the committed copy documents the zero-usage
+deterministic run that produced this output.csv).
+
+## Submission packaging
+
+    zip -r code.zip code README.md          # source + evaluation reports
+    python3 code/main.py dataset output.csv # the output to upload
+    # log.txt: capture from your own authorized run/session
