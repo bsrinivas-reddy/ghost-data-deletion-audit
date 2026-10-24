@@ -184,18 +184,18 @@ def parse_readback_log(path, file_id, captured_at):
     lines (which carry resource_id + outcome) via trace_id.
     """
     obs = []
-    pending = {}  # trace_id -> attrs of started line
+    pending = {}  # (service, trace_id) -> start attributes
     if True:
         for ts, a, line in _iter_kv_lines(path):
             ts = ts or captured_at
             ev = a.get("event", "")
             trace = a.get("trace_id", "")
             if ev in LOOKUP_START and trace:
-                pending[trace] = a
+                pending[(a.get("service", ""), trace)] = a
                 continue
             if ev in LOOKUP_DONE:
                 system, cat = LOOKUP_DONE[ev]
-                start = pending.pop(trace, {})
+                start = pending.pop((a.get("service", system), trace), {})
                 merged = dict(start); merged.update(a)
                 rid = a.get("resource_id")
                 if not rid:
@@ -204,7 +204,7 @@ def parse_readback_log(path, file_id, captured_at):
                 em, ui, ph, ha = _ids_from_attrs(merged)
                 obs.append(Observation(file_id, "evidence", captured_at, ts,
                                        system, rid, cat, st, em, ui, ph, ha,
-                                       detail=line.strip()[:200]))
+                                       detail=line.strip()[:200], attributes=merged))
                 continue
             if ev in ("attachment_pii_scan", "deletion_marker_check",
                       "restore_policy_violation"):
@@ -218,7 +218,7 @@ def parse_readback_log(path, file_id, captured_at):
                 em, ui, ph, ha = _ids_from_attrs(a)
                 obs.append(Observation(file_id, "evidence", captured_at, ts,
                                        system, rid, cat, st, em, ui, ph, ha,
-                                       detail=line.strip()[:200]))
+                                       detail=line.strip()[:200], attributes=a))
     return obs
 
 RECORD_LOOKUP_RE = re.compile(

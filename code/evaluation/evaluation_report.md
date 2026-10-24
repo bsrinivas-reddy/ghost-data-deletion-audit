@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-46 checks pass across the custom fixtures in `custom_tests.py`:
+47 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -84,6 +84,7 @@ validate every extracted fact, or establish completeness of discovery.
 - T23: malformed JSON plan shapes fail validation without a validator crash.
 - T24: an absent mandatory tombstone is not certified as redacted or given an
   invented recovery operation.
+- T25: concurrent services sharing a trace ID cannot exchange lookup identities.
 
 Fault injection: collapsing store IDs makes T15 fail; removing the identity cutoff
 makes T11 fail; removing retention expiry checks makes T17 fail. Disabling scope
@@ -125,6 +126,8 @@ Optional model-path mock tests: 6/6. These are pipeline tests, not live model ca
 20. Validator checks exact field names/types and operation-to-phase placement.
 21. Preservation/redaction categories require the preserved record, not absence;
     unsupported recovery is reported as uncertainty.
+22. Log correlation keys include the service as well as trace ID; start attributes
+    are preserved for per-record retention checks.
 
 ## Limits and next work
 
