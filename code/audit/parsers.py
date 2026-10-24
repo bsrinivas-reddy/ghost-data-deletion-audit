@@ -1,0 +1,332 @@
+"""Parsers: every dataset file format -> list[Observation]."""
+import csv, json, os, re, sqlite3, subprocess
+from .model import *
+
+# ---------------------------------------------------------------- identities
+def norm_email(e):
+    return e.strip().lower() if e else None
+
+def norm_phone(p):
+    if not p: return None
+    d = re.sub(r"\D", "", p)
+    return d or None
+
+def _ids_from_record(rec, keys_email, keys_uid, keys_phone, keys_hash):
+    emails, uids, phones, hashes = set(), set(), set(), set()
+    for k in keys_email:
+        v = rec.get(k)
+        if v:
+            n = norm_email(str(v))
+            if n: emails.add(n)
+    for k in keys_uid:
+        v = rec.get(k)
+        if v and re.fullmatch(r"user_\d+", str(v)): uids.add(str(v))
+    for k in keys_phone:
+        v = rec.get(k)
+        if v:
+            n = norm_phone(str(v))
+            if n: phones.add(n)
+    for k in keys_hash:
+        v = rec.get(k)
+        if v and re.fullmatch(r"[0-9a-f]{64}", str(v)): hashes.add(str(v))
+    return emails, uids, phones, hashes
+
+EMAIL_KEYS = ("email", "requester_email", "owner_email", "customer_email",
+              "subject_email", "to_address", "recipient")
+UID_KEYS = ("user_id", "customer_reference", "subject_reference")
+PHONE_KEYS = ("phone", "requester_phone", "owner_phone")
+HASH_KEYS = ("email_hash",)
+
+def ids_from(rec):
+    return _ids_from_record(rec, EMAIL_KEYS, UID_KEYS, PHONE_KEYS, HASH_KEYS)
+
+# ------------------------------------------------- collection interpretation
+# (system, collection) -> category
+COLLECTION_CATEGORY = {
+    ("account_service", "customer_profiles"): CAT_PROFILE,
+    ("identity_service", "deleted_customer_references"): CAT_TOMBSTONE,
+    ("search_service", "customer_search_documents"): CAT_SEARCH,
+    ("search_service", "search_documents"): CAT_SEARCH,
+    ("support_platform", "support_records"): CAT_SUPPORT_MSG,
+    ("support_platform", "customer_support_tickets"): CAT_SUPPORT_MSG,
+    ("support_platform", "support_attachments"): CAT_SUPPORT_ATT,
+    ("analytics_platform", "customer_analytics_reports"): CAT_ANALYTICS,
+    ("analytics_platform", "customer_analytics_profiles"): CAT_ANALYTICS,
+    ("telemetry_platform", "product_telemetry"): CAT_TELEMETRY,
+    ("integration_service", "connector_subscriptions"): CAT_DATAFLOW,
+    ("backup_service", "backup_restore_entries"): CAT_BACKUP,
+    ("security_service", "security_audit_events"): CAT_SECURITY,
+    ("security_service", "security_audit_records"): CAT_SECURITY,
+    ("export_service", "customer_exports"): CAT_EXPORT,
+    ("export_service", "customer_export_jobs"): CAT_EXPORT,
+    ("marketing_service", "marketing_profiles"): CAT_MARKETING,
+    ("marketing_platform", "marketing_profiles"): CAT_MARKETING,
+    ("notification_service", "email_delivery_logs"): CAT_EMAILLOG,
+    ("cache_service", "cache_entries"): CAT_CACHE,
+    ("legal_service", "legal_hold_records"): CAT_LEGAL,
+}
+
+RECORD_TYPE_CATEGORY = {
+    "USER_PROFILE": CAT_PROFILE, "SECONDARY_IDENTIFIER": CAT_SECONDARY,
+    "SEARCH_INDEX_ENTRY": CAT_SEARCH, "CACHE_ENTRY": CAT_CACHE,
+    "SUPPORT_MESSAGE": CAT_SUPPORT_MSG, "SUPPORT_ATTACHMENT": CAT_SUPPORT_ATT,
+    "ANALYTICS_PROFILE": CAT_ANALYTICS, "PRODUCT_TELEMETRY": CAT_TELEMETRY,
+    "USER_EXPORT": CAT_EXPORT, "MARKETING_PROFILE": CAT_MARKETING,
+    "EMAIL_DELIVERY_LOG": CAT_EMAILLOG, "SECURITY_AUDIT_LOG": CAT_SECURITY,
+    "LEGAL_HOLD_RECORD": CAT_LEGAL, "BACKUP_ARCHIVE": CAT_BACKUP,
+    "ACCOUNT_TOMBSTONE": CAT_TOMBSTONE, "DATA_FLOW": CAT_DATAFLOW,
+}
+
+def category_for(system, collection="", record_type=""):
+    if record_type and record_type in RECORD_TYPE_CATEGORY:
+        return RECORD_TYPE_CATEGORY[record_type]
+    if (system, collection) in COLLECTION_CATEGORY:
+        return COLLECTION_CATEGORY[(system, collection)]
+    if record_type:  # unknown record type: keep it visible, do not guess
+        return record_type
+    return "UNKNOWN"
+
+def state_for_record(category, rec):
+    """State of a present record from its fields."""
+    def has(*keys):
+        return any(rec.get(k) not in (None, "", "null") for k in keys)
+    if category in (CAT_PROFILE, CAT_SEARCH, CAT_CACHE, CAT_EXPORT,
+                    CAT_MARKETING, CAT_SUPPORT_ATT, CAT_SECONDARY):
+        return PRESENT
+    if category in (CAT_ANALYTICS, CAT_TELEMETRY):
+        if has("user_id", "customer_reference", "email", "phone", "email_hash"):
+            return IDENTIFIABLE
+        return ANONYMIZED
+    if category == CAT_SUPPORT_MSG:
+        if has("requester_name", "requester_email", "requester_phone"):
+            return IDENTIFIABLE
+        return CLEAN
+    if category == CAT_TOMBSTONE:
+        if has("name", "full_name", "email", "phone", "email_hash"):
+            return IDENTIFIABLE
+        return CLEAN
+    if category == CAT_EMAILLOG:
+        if has("email", "to_address", "recipient"):
+            return IDENTIFIABLE
+        return CLEAN
+    if category == CAT_DATAFLOW:
+        en = rec.get("enabled")
+        if str(en) in ("1", "true", "True"): return ACTIVE
+        return DISABLED
+    if category == CAT_BACKUP:
+        ra = rec.get("restore_allowed")
+        if str(ra) in ("1", "true", "True"): return RISK
+        return BLOCKED
+    if category in (CAT_SECURITY, CAT_LEGAL):
+        return RETAINED
+    return PRESENT
+
+# ------------------------------------------------------------------- manifest
+def load_manifest(ds):
+    out = {}
+    with open(os.path.join(ds, "evidence_files.csv")) as f:
+        for r in csv.DictReader(f):
+            out[r["file_id"]] = r
+    return out
+
+# ------------------------------------------------------------------ SQL files
+SQL_TABLE_MAP = {  # table -> (system, collection)
+    "customer_profiles": ("account_service", "customer_profiles"),
+    "customer_profiles_primary": ("account_service", "customer_profiles"),
+    "customer_profiles_failover_replica": ("account_service", "customer_profiles"),
+    "customer_search_documents": ("search_service", "customer_search_documents"),
+    "search_documents_primary": ("search_service", "customer_search_documents"),
+    "customer_analytics_profiles": ("analytics_platform", "customer_analytics_profiles"),
+    "support_records": ("support_platform", "support_records"),
+    "customer_exports": ("export_service", "customer_exports"),
+    "connector_subscriptions": ("integration_service", "connector_subscriptions"),
+    "backup_restore_entries": ("backup_service", "backup_restore_entries"),
+    "security_audit_records": ("security_service", "security_audit_records"),
+}
+
+def parse_sql_file(path, file_id, captured_at):
+    con = sqlite3.connect(":memory:")
+    with open(path) as f:
+        con.executescript(f.read())
+    obs = []
+    tables = [r[0] for r in con.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")]
+    collections = {}  # (system, collection) -> set of resource_ids present
+    for t in tables:
+        if t == "snapshot_scope":
+            continue
+        if t.startswith("customer_data_"):  # generic topology tables
+            for rid, system, coll, rec_json in con.execute(
+                    f'SELECT resource_id, origin_system, collection_name, record_json FROM "{t}"'):
+                rec = json.loads(rec_json)
+                cat = category_for(system, coll)
+                st = state_for_record(cat, rec)
+                em, ui, ph, ha = ids_from(rec)
+                obs.append(Observation(file_id, "evidence", captured_at, captured_at,
+                                       system, rid, cat, st, frozenset(em), frozenset(ui),
+                                       frozenset(ph), frozenset(ha),
+                                       collection=f"{system}/{coll}", authoritative=True))
+                collections.setdefault((system, coll), set()).add(rid)
+            continue
+        if t not in SQL_TABLE_MAP:
+            continue
+        system, coll = SQL_TABLE_MAP[t]
+        cols = [c[1] for c in con.execute(f'PRAGMA table_info("{t}")')]
+        for row in con.execute(f'SELECT * FROM "{t}"'):
+            rec = dict(zip(cols, row))
+            rid = rec.get("resource_id")
+            if not rid:
+                continue
+            cat = category_for(system, coll)
+            st = state_for_record(cat, rec)
+            em, ui, ph, ha = ids_from(rec)
+            obs.append(Observation(file_id, "evidence", captured_at, captured_at,
+                                   system, rid, cat, st, frozenset(em), frozenset(ui),
+                                   frozenset(ph), frozenset(ha),
+                                   collection=f"{system}/{coll}", authoritative=True))
+            collections.setdefault((system, coll), set()).add(rid)
+    con.close()
+    return obs, collections
+
+# ----------------------------------------------------------------- JSON files
+def parse_json_file(path, file_id, captured_at):
+    with open(path) as f:
+        d = json.load(f)
+    obs, collections = [], {}
+    def coll_key(system, coll):
+        collections.setdefault((system, coll), set())
+        return collections[(system, coll)]
+
+    if "service_exports" in d:  # service_resource_export_*
+        se = d["service_exports"]
+        for lookup in se.get("account_service", {}).get("profile_lookups", []):
+            rid = lookup["resource_id"]; prof = lookup.get("profile")
+            t = lookup.get("observed_at", captured_at)
+            if prof is None:
+                obs.append(Observation(file_id, "evidence", captured_at, t,
+                    "account_service", rid, CAT_PROFILE, ABSENT))
+            else:
+                em, ui, ph, ha = ids_from(prof)
+                obs.append(Observation(file_id, "evidence", captured_at, t,
+                    "account_service", rid, CAT_PROFILE, PRESENT,
+                    frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+        for prof in se.get("analytics_platform", {}).get("profiles", []):
+            t = prof.get("observed_at", captured_at)
+            em, ui, ph, ha = ids_from(prof)
+            st = state_for_record(CAT_ANALYTICS, prof)
+            obs.append(Observation(file_id, "evidence", captured_at, t,
+                "analytics_platform", prof["resource_id"], CAT_ANALYTICS, st,
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+        for e in se.get("backup_service", {}).get("restore_entries", []):
+            t = e.get("observed_at", captured_at)
+            em, ui, ph, ha = ids_from(e)
+            st = state_for_record(CAT_BACKUP, e)
+            obs.append(Observation(file_id, "evidence", captured_at, t,
+                "backup_service", e["resource_id"], CAT_BACKUP, st,
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+        for e in se.get("export_service", {}).get("exports", []):
+            t = e.get("observed_at", captured_at)
+            em, ui, ph, ha = ids_from(e)
+            present = e.get("download_available", True)
+            st = PRESENT if present else ABSENT
+            obs.append(Observation(file_id, "evidence", captured_at, t,
+                "export_service", e["resource_id"], CAT_EXPORT, st,
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+        for e in se.get("integration_service", {}).get("connectors", []):
+            t = e.get("observed_at", captured_at)
+            em, ui, ph, ha = ids_from(e)
+            st = state_for_record(CAT_DATAFLOW, e)
+            obs.append(Observation(file_id, "evidence", captured_at, t,
+                "integration_service", e["resource_id"], CAT_DATAFLOW, st,
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+        for e in se.get("search_service", {}).get("index_queries", []):
+            t = e.get("observed_at", captured_at)
+            em, ui, ph, ha = ids_from(e)
+            res = str(e.get("result", "")).lower()
+            st = PRESENT if res in ("hit", "found") else ABSENT
+            obs.append(Observation(file_id, "evidence", captured_at, t,
+                "search_service", e["resource_id"], CAT_SEARCH, st,
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+        for e in se.get("security_service", {}).get("audit_records", []):
+            t = e.get("observed_at", captured_at)
+            em, ui, ph, ha = ids_from(e)
+            obs.append(Observation(file_id, "evidence", captured_at, t,
+                "security_service", e["resource_id"], CAT_SECURITY, RETAINED,
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+        for e in se.get("support_platform", {}).get("tickets", []):
+            t = e.get("observed_at", captured_at)
+            em, ui, ph, ha = ids_from(e)
+            st = state_for_record(CAT_SUPPORT_MSG, e)
+            obs.append(Observation(file_id, "evidence", captured_at, t,
+                "support_platform", e["resource_id"], CAT_SUPPORT_MSG, st,
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+        return obs, collections
+
+    if "snapshots" in d:  # customer_data_snapshot_bundle_*
+        for snap in d["snapshots"]:
+            system = snap["data_store"]; coll = snap["collection"]
+            t = snap.get("captured_at", captured_at)
+            present_ids = set()
+            for rec in snap.get("records", []):
+                rid = rec.get("resource_id")
+                if not rid: continue
+                cat = category_for(system, coll)
+                st = state_for_record(cat, rec)
+                em, ui, ph, ha = ids_from(rec)
+                obs.append(Observation(file_id, "evidence", captured_at, t,
+                    system, rid, cat, st, frozenset(em), frozenset(ui),
+                    frozenset(ph), frozenset(ha),
+                    collection=f"{system}/{coll}", authoritative=True))
+                present_ids.add(rid)
+            collections[(system, coll)] = present_ids
+        return obs, collections
+
+    records = d.get("records")
+    if isinstance(records, list):
+        for rec in records:
+            t = rec.get("recorded_at") or rec.get("captured_at") or captured_at
+            rid = rec.get("resource_id")
+            if not rid: continue
+            system = rec.get("system") or rec.get("source_system") or ""
+            rtype = rec.get("record_type", "")
+            if not system:
+                # analytics_report / export_jobs style: infer from content
+                if "metrics" in rec or "audience_cohort" in rec:
+                    system = "analytics_platform"
+                elif "file_name" in rec or "included_sections" in rec:
+                    system = "export_service"
+            coll = ""
+            cat = category_for(system, coll, rtype)
+            if cat == "UNKNOWN":
+                if system == "analytics_platform": cat = CAT_ANALYTICS
+                elif system == "export_service": cat = CAT_EXPORT
+            result = str(rec.get("result", "")).upper()
+            if result in ("NOT_FOUND", "ABSENT"):
+                st = ABSENT
+            elif result in ("IDENTIFIABLE",):
+                st = IDENTIFIABLE
+            elif result in ("ANONYMIZED",):
+                st = ANONYMIZED
+            elif result in ("REDACTED",):
+                st = CLEAN
+            elif result in ("ACTIVE",):
+                st = ACTIVE
+            elif result in ("DISABLED",):
+                st = DISABLED
+            elif result in ("BLOCKED",):
+                st = BLOCKED
+            elif result in ("FOUND", "PRESENT"):
+                st = state_for_record(cat, rec) if cat in (
+                    CAT_ANALYTICS, CAT_SUPPORT_MSG, CAT_TOMBSTONE) else (
+                    RETAINED if cat in RETAIN_CATS else
+                    ACTIVE if cat == CAT_DATAFLOW else
+                    RISK if cat == CAT_BACKUP else PRESENT)
+            else:
+                st = state_for_record(cat, rec)
+            if system == "security_service": st = RETAINED if st != ABSENT else ABSENT
+            em, ui, ph, ha = ids_from(rec)
+            obs.append(Observation(file_id, "evidence", captured_at, t,
+                system, rid, cat, st, frozenset(em), frozenset(ui),
+                frozenset(ph), frozenset(ha)))
+        return obs, collections
+    return obs, collections

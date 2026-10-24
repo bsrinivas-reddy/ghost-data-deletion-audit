@@ -1,0 +1,10 @@
+dataset/
+output.csv
+log.txt
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+agent-trace/
+code/extracted/
