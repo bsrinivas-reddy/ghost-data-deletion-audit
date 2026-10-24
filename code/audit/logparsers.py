@@ -26,6 +26,11 @@ LOOKUP_DONE = {
     "restore_policy_read_completed": ("backup_service", CAT_BACKUP),
     "restore_candidate_evaluated": ("backup_service", CAT_BACKUP),
     "contact_lookup_completed": ("analytics_platform", CAT_ANALYTICS),
+    "export_metadata_read_completed": ("export_service", CAT_EXPORT),
+    "restore_authorization_completed": ("backup_service", CAT_BACKUP),
+    "analytics_profile_read": ("analytics_platform", CAT_ANALYTICS),
+    "message_read": ("support_platform", CAT_SUPPORT_MSG),
+    "retained_order_loaded": ("support_platform", CAT_SUPPORT_MSG),
     "connector_heartbeat": ("integration_service", CAT_DATAFLOW),
     "analytics_identity_scan": ("analytics_platform", CAT_ANALYTICS),
     "message_pii_scan": ("support_platform", CAT_SUPPORT_MSG),
@@ -42,6 +47,7 @@ LOOKUP_START = {
     "attachment_scan_started", "restore_policy_check_started",
     "analytics_profile_scan_started", "export_download_check_started",
     "audit_record_query_started", "contact_lookup_started",
+    "export_metadata_read_started", "retained_order_query_started",
 }
 
 def _state_from_attrs(cat, a):
@@ -52,6 +58,10 @@ def _state_from_attrs(cat, a):
     if a.get("http_status") == "404": return ABSENT
     if a.get("result", "").lower() in ("miss", "not_found", "zero"): return ABSENT
     if a.get("marker_found") == "false": return PRESENT
+    if a.get("decision") is not None:
+        return BLOCKED if a["decision"] == "deny" else RISK
+    if a.get("message_text") is not None:
+        return CLEAN if "[REDACTED]" in a["message_text"] else IDENTIFIABLE
     if a.get("restore_allowed") is not None:
         return RISK if a["restore_allowed"] == "true" else BLOCKED
     if a.get("eligible") is not None or a.get("deletion_block") is not None:
@@ -92,10 +102,23 @@ def _ids_from_attrs(a):
     return frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)
 
 JSON_LINE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)\s+(\{.*\})\s*$")
+TS_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)")
+MSG_RE = re.compile(r'message="((?:[^"\\]|\\.)*)"\s*$')
+BRACKET_RE = re.compile(
+    r"^(\S+)\s+\[(\w+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+([a-z_]+):\s*(.*)$")
+SYSLOG_RE = re.compile(
+    r"^(\S+)\s+<\d+>\d+\s+\S+\s+(\S+)\s+(\S+)\s+-\s+-\s+(.*)$")
+TRACE_TOKEN_RE = re.compile(r"\b(tr-[0-9a-z-]+|rb-[0-9a-z-]+)\b")
 
 def _iter_kv_lines(path):
-    """Yield (ts, attrs) per line; supports both key=value and JSON-payload
-    structured log lines."""
+    """Yield (ts, attrs, line) per line, normalizing every log syntax seen in
+    the dataset into a common attribute dict:
+    - plain `level=.. service=.. k=v` lines (incl. JSON payloads)
+    - cloud-runtime `requestId=.. function=.. message="k=\"v\" ..."` lines
+    - bracket `[LEVEL] [service] [trace] event: k="v"` lines
+    - pipe `ts | LEVEL | service | trace | event | k="v"` lines
+    - syslog `ts <15>1 node service trace - - k="v"` lines
+    """
     import json as _json
     with open(path) as f:
         for line in f:
@@ -111,9 +134,48 @@ def _iter_kv_lines(path):
                 obj = {k: (str(v) if v is not None else "null") for k, v in obj.items()}
                 yield jm.group(1), obj, line
                 continue
-            m = re.match(r"(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)", line)
-            ts = m.group(1) if m else None
-            yield ts, kvs(line), line
+            tm = TS_RE.match(line)
+            ts = tm.group(1) if tm else None
+            a = {}
+            if " | " in line:
+                parts = [p.strip() for p in line.split(" | ")]
+                if len(parts) >= 6:
+                    a = kvs(" ".join(parts[5:]))
+                    a.setdefault("event", parts[4])
+                    a.setdefault("trace_id", parts[3])
+                    a.setdefault("service", parts[2])
+            elif BRACKET_RE.match(line):
+                m = BRACKET_RE.match(line)
+                _, _lvl, service, trace, event, rest = m.groups()
+                a = kvs(rest)
+                a.setdefault("event", event)
+                a.setdefault("trace_id", trace)
+                a.setdefault("service", service)
+            elif SYSLOG_RE.match(line):
+                m = SYSLOG_RE.match(line)
+                _, service, trace, rest = m.groups()
+                a = kvs(rest)
+                a.setdefault("trace_id", trace)
+                a.setdefault("service", service)
+            else:
+                mm = MSG_RE.search(line)
+                if mm:
+                    inner = mm.group(1).replace('\\"', '"')
+                    a = kvs(inner)
+                    outer = kvs(line[:mm.start()])
+                    for k, v in outer.items():
+                        a.setdefault(k, v)
+                    if "function" in a:
+                        a.setdefault("service", a["function"])
+                else:
+                    a = kvs(line)
+            if "requestId" in a:
+                a.setdefault("trace_id", a["requestId"])
+            if "trace_id" not in a:
+                tr = TRACE_TOKEN_RE.search(line)
+                if tr:
+                    a["trace_id"] = tr.group(1)
+            yield ts, a, line
 
 def parse_readback_log(path, file_id, captured_at):
     """resource_lookup_trace / syslog / service-event style logs.

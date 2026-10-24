@@ -200,6 +200,8 @@ class CaseAudit:
             violated = st is not None and st not in compliant_states
             if violated and find_op:
                 ev_id = self._cite(info, want_states={st})
+                if not ev_id and info["state_obs"] is not None:
+                    ev_id = info["state_obs"].evidence_id
                 findings.append((find_op, system, rid, FIND_STATE[find_op], ev_id))
                 remediations.append((rem_op, system, rid, REM_STATE[rem_op], ""))
             verifications.append((ver_op, system, rid, VERIFY_STATE[ver_op], None))
@@ -224,7 +226,12 @@ class CaseAudit:
                     {CLEAN} if st == "REDACTED" else (
                     {ANONYMIZED} if st == "ANONYMIZED" else (
                     {DISABLED} if st == "DISABLED" else {BLOCKED}))))
-                verifications[i] = (op, system, rid, st, self._cite(info, want))
+                ev_id = self._cite(info, want)
+                if not ev_id and info["state_obs"] is not None:
+                    ev_id = info["state_obs"].evidence_id
+                verifications[i] = (op, system, rid, st, ev_id)
+        if status == "COMPLETE":
+            verifications = [v for v in verifications if v[4]]
         emit(seq, "VERIFICATION", sorted(verifications, key=order(VERIFICATION_ORDER)))
         return status, steps
 

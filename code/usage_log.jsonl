@@ -1,0 +1,5 @@
+{"ts": "2026-10-24T18:42:31Z", "task": "verify", "backend": "mock", "model": "mock-model", "prompt_tokens": 0, "completion_tokens": 3, "note": "MOCK: pipeline test, no live model call, tokens simulated"}
+{"ts": "2026-10-24T18:42:31Z", "task": "verify", "backend": "mock", "model": "mock-model", "prompt_tokens": 0, "completion_tokens": 3, "note": "MOCK: pipeline test, no live model call, tokens simulated"}
+{"ts": "2026-10-24T18:42:31Z", "task": "verify", "backend": "mock", "model": "mock-model", "prompt_tokens": 0, "completion_tokens": 3, "note": "MOCK: pipeline test, no live model call, tokens simulated"}
+{"ts": "2026-10-24T18:42:31Z", "task": "verify", "backend": "mock", "model": "mock-model", "prompt_tokens": 0, "completion_tokens": 3, "note": "MOCK: pipeline test, no live model call, tokens simulated"}
+{"ts": "2026-10-24T18:42:31Z", "task": "verify", "backend": "mock", "model": "mock-model", "prompt_tokens": 0, "completion_tokens": 3, "note": "MOCK: pipeline test, no live model call, tokens simulated"}

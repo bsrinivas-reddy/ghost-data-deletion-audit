@@ -11,8 +11,22 @@ def norm_phone(p):
     d = re.sub(r"\D", "", p)
     return d or None
 
+EMAIL_FULL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+UID_FULL = re.compile(r"user_\d+")
+HASH_FULL = re.compile(r"[0-9a-f]{64}")
+
 def _ids_from_record(rec, keys_email, keys_uid, keys_phone, keys_hash):
     emails, uids, phones, hashes = set(), set(), set(), set()
+    # value-classified sweep over every scalar field: identity fields are
+    # named inconsistently across files (lookup_value, subject_key,
+    # correlation_key, matched_value, owner_key, subject_reference...), so
+    # classify by value shape, not by key name
+    for v in rec.values():
+        if not isinstance(v, str) or not v:
+            continue
+        if EMAIL_FULL.fullmatch(v): emails.add(v.lower())
+        elif UID_FULL.fullmatch(v): uids.add(v)
+        elif HASH_FULL.fullmatch(v): hashes.add(v)
     for k in keys_email:
         v = rec.get(k)
         if v:
