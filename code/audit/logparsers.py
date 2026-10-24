@@ -24,6 +24,12 @@ LOOKUP_DONE = {
     "analytics_profile_read_completed": ("analytics_platform", CAT_ANALYTICS),
     "connector_config_read_completed": ("integration_service", CAT_DATAFLOW),
     "restore_policy_read_completed": ("backup_service", CAT_BACKUP),
+    "restore_candidate_evaluated": ("backup_service", CAT_BACKUP),
+    "contact_lookup_completed": ("analytics_platform", CAT_ANALYTICS),
+    "connector_heartbeat": ("integration_service", CAT_DATAFLOW),
+    "analytics_identity_scan": ("analytics_platform", CAT_ANALYTICS),
+    "message_pii_scan": ("support_platform", CAT_SUPPORT_MSG),
+    "export_download_check_completed": ("export_service", CAT_EXPORT),
     "audit_record_read_completed": ("security_service", CAT_SECURITY),
     "export_status_read_completed": ("export_service", CAT_EXPORT),
     "contact_query_completed": ("support_platform", CAT_SUPPORT_ATT),
@@ -33,7 +39,9 @@ LOOKUP_START = {
     "analytics_profile_read_started", "connector_config_read_started",
     "restore_policy_read_started", "audit_record_read_started",
     "export_status_read_started", "contact_query_started",
-    "attachment_scan_started",
+    "attachment_scan_started", "restore_policy_check_started",
+    "analytics_profile_scan_started", "export_download_check_started",
+    "audit_record_query_started", "contact_lookup_started",
 }
 
 def _state_from_attrs(cat, a):
@@ -46,11 +54,17 @@ def _state_from_attrs(cat, a):
     if a.get("marker_found") == "false": return PRESENT
     if a.get("restore_allowed") is not None:
         return RISK if a["restore_allowed"] == "true" else BLOCKED
+    if a.get("eligible") is not None or a.get("deletion_block") is not None:
+        if a.get("deletion_block") == "true" or a.get("eligible") == "false":
+            return BLOCKED
+        return RISK
     if a.get("enabled") is not None:
         return ACTIVE if a["enabled"] == "true" else DISABLED
     if cat == CAT_ANALYTICS:
         if any(a.get(k) not in (None, "null", "") for k in
-               ("customer_reference", "email", "phone", "email_hash")):
+               ("customer_reference", "email", "phone", "email_hash", "matched_value")):
+            return IDENTIFIABLE
+        if a.get("rows") not in (None, "0") and "correlation_key" in a:
             return IDENTIFIABLE
         return ANONYMIZED
     if cat in (CAT_SUPPORT_MSG, CAT_SUPPORT_ATT):
@@ -59,7 +73,8 @@ def _state_from_attrs(cat, a):
             return IDENTIFIABLE
         return CLEAN
     if cat == CAT_EXPORT:
-        if a.get("download_available") == "false": return ABSENT
+        if a.get("download_available") == "false" or a.get("available") == "false":
+            return ABSENT
         return PRESENT
     return PRESENT
 
@@ -70,7 +85,7 @@ def _ids_from_attrs(a):
         if EMAIL_RE.fullmatch(v): em.add(v.lower())
         elif UID_RE.fullmatch(v): ui.add(v)
         elif re.fullmatch(r"[0-9a-f]{64}", v): ha.add(v)
-    for k in ("requester_phone", "phone"):
+    for k in ("requester_phone", "phone", "matched_value"):
         if a.get(k) not in (None, "", "null"):
             d = re.sub(r"\D", "", a[k])
             if d: ph.add(d)

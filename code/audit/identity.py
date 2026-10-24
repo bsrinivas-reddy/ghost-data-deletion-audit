@@ -1,5 +1,6 @@
 """Identity resolution: current snapshot + historical audit log chains."""
 import csv, re
+import hashlib
 from .parsers import norm_phone
 
 class Identities:
@@ -33,6 +34,11 @@ class Identities:
                         if p: u["phones"].add(p)
                     elif fn == "email_hash":
                         u["hashes"].add(val)
+        # dataset convention: email_hash is sha256 of the lowercase email;
+        # derive hashes for chained emails that have no explicit hash row
+        for u in self.users.values():
+            for e in list(u["emails"]):
+                u["hashes"].add(hashlib.sha256(e.encode()).hexdigest())
         for uid, u in self.users.items():
             for e in u["emails"]: self.email_to_uid[e] = uid
             for p in u["phones"]: self.phone_to_uid[p] = uid
