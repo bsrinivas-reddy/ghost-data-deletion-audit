@@ -12,6 +12,9 @@ golden samples cannot distinguish:
      unrelated 404 must not leak in
   T4 evidence captured after audit_at must not change the state at audit_at
   T5 workflow claims are never state proof (claim vs evidence conflicts)
+  T7 a record observed after audit_at must not change the state at audit_at
+  T8 findings cite the truthful state-establishing file even when that file
+     was captured after audit_at (never an older/stand-in citation, never "")
 
 Run: python3 code/evaluation/custom_tests.py
 """
@@ -203,9 +206,50 @@ def t5b(root):
     s, st = run(w, case("cA", "alice@example.com"))
     check("T5 FAILED claim cannot override 404 evidence", s == "COMPLETE", s)
 
+# ---------------------------------------------------------------- T7/T8
+def t7(root):
+    # a record observed AFTER audit_at must not change the state at audit_at
+    write_fixture(
+        root,
+        "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n",
+        "",
+        "evidence_1,evidence/logs/lookup.log,central_observability_export,2026-09-05T00:00:00Z\n"
+        "evidence_2,evidence/records/late.json,service_resource_export,2026-09-13T00:00:00Z\n",
+        {"evidence/logs/lookup.log":
+            '2026-09-04T09:00:00Z level=DEBUG service=account_service trace_id=tr-1 event=profile_lookup_started lookup_key="alice@example.com" attempt=1\n'
+            '2026-09-04T09:00:02Z level=INFO service=account_service trace_id=tr-1 resource_id=account_1 event=profile_lookup_completed rows=0 http_status=404 duration_ms=20\n',
+         "evidence/records/late.json":
+            '{"exported_at": "2026-09-13T00:00:00Z", "service_exports": {"account_service": {"profile_lookups": ['
+            '{"resource_id": "account_1", "observed_at": "2026-09-12T09:00:00Z", '
+            '"profile": {"resource_id": "account_1", "email": "alice@example.com", "user_id": "user_1"}}]}}}'})
+    w = World(root)
+    s, st = run(w, case("cA", "alice@example.com"))
+    finds = {x["resource_id"] for x in st if x["phase"] == "FINDING"}
+    check("T7 record observed after audit_at does not leak into state",
+          s == "COMPLETE" and "account_1" not in finds, f"{s} finds={sorted(finds)}")
+
+def t8(root):
+    # a violation recorded at/before audit_at in a file captured after
+    # audit_at: the finding must cite that file (truthful fallback), never ""
+    write_fixture(
+        root,
+        "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n",
+        "",
+        "evidence_1,evidence/records/late.json,service_resource_export,2026-09-11T00:00:00Z\n",
+        {"evidence/records/late.json":
+            '{"exported_at": "2026-09-11T00:00:00Z", "service_exports": {"account_service": {"profile_lookups": ['
+            '{"resource_id": "account_1", "observed_at": "2026-09-06T09:00:00Z", '
+            '"profile": {"resource_id": "account_1", "email": "alice@example.com", "user_id": "user_1"}}]}}}'})
+    w = World(root)
+    s, st = run(w, case("cA", "alice@example.com"))
+    f = [x for x in st if x["phase"] == "FINDING" and x["resource_id"] == "account_1"]
+    check("T8 finding cites the truthful state-establishing file",
+          s == "INCOMPLETE" and f and f[0]["evidence_id"] == "evidence_1",
+          f"{s} findings={f}")
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

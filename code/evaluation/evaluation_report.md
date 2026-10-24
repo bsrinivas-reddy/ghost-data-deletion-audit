@@ -79,12 +79,15 @@ We investigated every source-supported assignment route:
 - the best temporal assignment we could construct (ordered unique-window
   matching) scored **0.04 precision** against golden ground truth.
 
-Conclusion: no source-supported attribution exists for these resources, and
-temporal guessing is measurably wrong, so the engine excludes them and
-decides each case from attributable evidence. On the sample set this costs
-most of the remaining step accuracy (the golden answers encode the
-generator's ground-truth mapping). 0 of 518 cases are decided with an empty
-footprint; every emitted status rests on cited evidence.
+Conclusion (unresolved, not a proven ceiling): we found no source-supported
+link for these resources, and the measurable alternative (temporal
+assignment) is wrong often enough to be unusable, so the engine excludes
+them and decides each case from attributable evidence. On the sample set
+this accounts for most of the remaining step gap; the golden answers appear
+to use information not visible in participant-facing files. 0 of 518 cases
+are decided with an empty footprint; every emitted status rests on cited
+evidence. If a source-supported link for these resources is later found,
+the engine can bind them without structural changes.
 
 ## 5. Full-dataset run (518 evaluation cases)
 
