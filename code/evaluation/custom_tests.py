@@ -494,6 +494,7 @@ def t27(root):
         ('message_text="Contact alice@example.com"', "", "INCOMPLETE"),
         ('message_text="[REDACTED]" requester_phone="+1 555 000 0001"', "user_1", "INCOMPLETE"),
         ('message_excerpt="Contact alice@example.com"', "", "INCOMPLETE"),
+        ('message_text="[REDACTED]" matched_value="alice@example.com"', "user_1", "INCOMPLETE"),
         ('message_text="[REDACTED]"', "user_1", "COMPLETE"),
     ]
     for i, (attrs, subject, expected) in enumerate(variants):

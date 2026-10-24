@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-66 checks pass across the custom fixtures in `custom_tests.py`:
+67 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -204,3 +204,20 @@ state correction fails four checks; removing embedded-email discovery fails two.
 Plain, bracket, pipe, syslog, JSON and cloud-runtime log variants are exercised.
 The full current corpus output is unchanged by this correction. No final-head
 Muse review has been run after the old-build review described above.
+
+## Follow-up independent review
+
+Muse reviewed the retained-message log patch with its connected helper and tests.
+A proposed missing prerequisite was not applicable: the content scan was already
+in the patch base. A conflicting explicit subject test also disproved the
+proposed cross-owner binding: user_2 plus user_1's email in text does not bind
+user_1 because the engine rejects conflicting stable subjects. The review did
+find a real detector precedence gap: matched_value plus a redaction marker
+returned CLEAN. An additional regression failed before a guard was added and
+passes after. Full-corpus output remains unchanged. Earlier claims about
+UNKNOWN generating proved violations refer to older code, not this head.
+
+Open, preexisting limits include empty/plain messages being treated as exposed,
+noncanonical phone formats, started-record context carried into completion,
+nested/prose log shapes and other text keys. These have not been established as
+current-corpus failures. No overall correctness approval is claimed.

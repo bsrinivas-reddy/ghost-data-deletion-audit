@@ -60,7 +60,8 @@ def _state_from_attrs(cat, a):
     if a.get("marker_found") == "false": return PRESENT
     if a.get("decision") is not None:
         return BLOCKED if a["decision"] == "deny" else RISK
-    if cat == CAT_SUPPORT_MSG and state_for_record(cat, a) == IDENTIFIABLE:
+    if cat == CAT_SUPPORT_MSG and (state_for_record(cat, a) == IDENTIFIABLE
+                                   or a.get("matched_value") not in (None, "", "null")):
         return IDENTIFIABLE
     if a.get("message_text") is not None:
         return CLEAN if "[REDACTED]" in a["message_text"] else IDENTIFIABLE
