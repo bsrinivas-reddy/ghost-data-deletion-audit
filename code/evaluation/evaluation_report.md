@@ -112,9 +112,10 @@ the engine can bind them without structural changes.
    pinned empirically against the golden samples: all 75 golden manifest
    citations reference files captured at/before audit_at (so pre-audit
    captures are preferred for citation), while gating STATE on capture time
-   drops golden step recall (154 -> 147 matched steps) - records whose own
-   timestamp precedes audit_at belong to the state at audit_at even when
-   their file was captured later. T7/T8 pin both directions.
+   drops golden step recall (a controlled experiment loses a dozen matched
+   steps and two sequence-exact cases) - records whose own timestamp
+   precedes audit_at belong to the state at audit_at even when their file
+   was captured later. T7/T8 pin both directions.
 4. JSON-payload structured logs parsed as key=value - dual-format reader.
 5. Media extractor context windows false-bound neighbouring rows of
    multi-resource consoles - conservative same-line/single-resource policy.
