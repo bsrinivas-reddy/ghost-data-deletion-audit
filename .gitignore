@@ -10,3 +10,7 @@ log.txt
 output.csv
 venv/
 warnings.txt
+
+output_uncertainty.md
+code.zip
+*.jsonl

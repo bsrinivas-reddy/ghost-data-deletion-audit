@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Optional model-assisted evidence extraction with measured usage.
 
-The audit engine is deterministic end to end: identity resolution, footprint
-reconstruction, state-at-audit, policy and step emission never depend on a
-model. This module offers two optional assists on top of that core:
+The default audit run is deterministic. Optional intent assistance can affect
+an UNKNOWN request's authorization classification. Media and verification
+helpers are separate from the default prediction run:
 
   intent  - second opinion on whether a request actually asks for deletion,
             consulted only when the deterministic classifier is uncertain
@@ -24,16 +24,13 @@ model. This module offers two optional assists on top of that core:
 Backends:
   none    (default) no model calls; the run is fully deterministic
   gemini  Gemini API, key from GEMINI_API_KEY env var only. A free-tier key
-          (Google AI Studio, 250 requests/day at the time of writing) is
-          enough for the 518-case run because assists fire only where the
-          deterministic path is uncertain. Alternatively run these same
-          prompts inside a local Gemini/Antigravity session and record the
-          usage below - either way the measured usage lands in
-          evaluation/usage_log.jsonl and is summarized by usage_report.md.
+          whose quotas must be checked in the owner's project. No paid-tier
+          calls are authorized by this project. The real API path is optional
+          and has not been live-tested here. Usage is written to
+          code/usage_log.jsonl; Markdown totals must be updated explicitly.
 
-Every call is logged with real token counts from the API response. No call
-is ever simulated: with no key configured the assist is skipped and the log
-stays empty, which usage_report.md then reports honestly as zero usage.
+Real API calls log returned token counts. Mock calls are explicitly simulated
+and excluded from real totals. No backend or no key means no real usage.
 """
 import json, os, sys, time, urllib.request
 

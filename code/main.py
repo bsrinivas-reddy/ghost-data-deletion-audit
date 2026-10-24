@@ -6,7 +6,7 @@ at the repository root: one row per request in dataset/deletion_requests.csv.
 
 Usage: python3 code/main.py [dataset_dir] [output_csv]
 """
-import csv, json, os, re, sys
+import csv, hashlib, json, os, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from audit.engine import World, CaseAudit
@@ -30,12 +30,18 @@ def main():
             for r in csv.DictReader(f):
                 if not re.search(r"\.(png|jpg|jpeg|pdf)$", r["file_path"], re.I):
                     continue
-                if not os.path.exists(os.path.join(extracted, r["file_id"] + ".json")):
+                sidecar = os.path.join(extracted, r["file_id"] + ".json")
+                source_hash = hashlib.sha256(open(os.path.join(ds, r["file_path"]), "rb").read()).hexdigest()
+                try:
+                    cached = json.load(open(sidecar))
+                except (OSError, ValueError):
+                    cached = {}
+                if cached.get("source_sha256") != source_hash or "text" not in cached:
                     need.append(r["file_id"])
     if need:
         subprocess.run([sys.executable,
                         os.path.join(root, "code", "extract_media.py"),
-                        ds, extracted], check=False)
+                        ds, extracted], check=True)
     world = World(ds)
     with open(os.path.join(ds, "deletion_requests.csv")) as f:
         cases = list(csv.DictReader(f))
@@ -43,6 +49,8 @@ def main():
     for case in sorted(cases, key=lambda c: case_sort_key(c["case_id"])):
         audit = CaseAudit(world, case)
         status, steps = audit.run()
+        for issue in audit.issues:
+            warnings.append(f"{case['case_id']}: {issue}")
         if status == "NOT_APPLICABLE":
             steps_json = "[]"
         else:
@@ -56,7 +64,13 @@ def main():
         w = csv.DictWriter(f, fieldnames=["case_id", "deletion_status", "steps_json"])
         w.writeheader()
         w.writerows(rows)
-    print(f"wrote {len(rows)} rows to {out_path}")
+    issue_path = os.path.splitext(out_path)[0] + "_uncertainty.md"
+    with open(issue_path, "w") as f:
+        f.write("# Audit uncertainty\n\n")
+        f.write("INCOMPLETE is a fail-closed mapping where the fixed schema has no UNKNOWN status. "
+                "Missing evidence is not represented as an invented finding or remedial operation.\n\n")
+        f.write("\n".join("- " + msg for msg in warnings) if warnings else "No unresolved evidence states detected.\n")
+    print(f"wrote {len(rows)} rows to {out_path}; uncertainty: {issue_path}")
     for msg in warnings:
         print("WARN:", msg, file=sys.stderr)
 

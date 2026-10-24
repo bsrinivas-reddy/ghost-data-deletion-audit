@@ -41,17 +41,27 @@ COVERAGE = {
 
 def main(path):
     manifest = set()
+    evidence_times = {}
     with open(os.path.join(DS, "evidence_files.csv")) as f:
         for r in csv.DictReader(f):
             manifest.add(r["file_id"])
+            evidence_times[r["file_id"]] = r["captured_at"]
+    for filename, idcol in (("system_activity.csv", "activity_id"), ("user_audit_log.csv", "audit_id")):
+        with open(os.path.join(DS, filename)) as f:
+            for r in csv.DictReader(f):
+                evidence_times[r[idcol]] = r["event_time"]
     reqs = list(csv.DictReader(open(os.path.join(DS, "deletion_requests.csv"))))
     rows = list(csv.DictReader(open(path)))
     problems = []
 
     # row contract
-    want_order = [r["case_id"] for r in reqs]
+    def key(cid):
+        m = re.fullmatch(r"case_(\d+)", cid)
+        return (0, int(m.group(1))) if m else (1, cid)
+    want_order = sorted((r["case_id"] for r in reqs), key=key)
+    audit_times = {r["case_id"]: r["audit_at"] for r in reqs}
     if [r["case_id"] for r in rows] != want_order:
-        problems.append(("ROWSET", "rows not in the deletion_requests.csv order"))
+        problems.append(("ROWSET", "rows not sorted by case_id or row set differs"))
     if len(rows) != len(reqs):
         problems.append(("ROWSET", f"{len(rows)} rows for {len(reqs)} requests"))
 
@@ -84,6 +94,8 @@ def main(path):
         remed = [s for s in steps if s["phase"] == "REMEDIATION"]
         verif = [s for s in steps if s["phase"] == "VERIFICATION"]
         if status == "COMPLETE":
+            if not steps:
+                problems.append((cid, "COMPLETE without any state proof"))
             if findings or remed:
                 problems.append((cid, "COMPLETE with non-verification steps"))
             for s in steps:
@@ -97,22 +109,23 @@ def main(path):
                     problems.append((cid, "finding without cited evidence"))
             # INCOMPLETE remediation and future-verification steps are
             # REQUIRED by the spec to carry an empty evidence_id
-            for s in remed + [v for v in verif if v.get("evidence_id") == ""]:
-                pass
+            for s in verif:
+                if s.get("evidence_id"):
+                    problems.append((cid, "INCOMPLETE future verification carrying evidence_id"))
             for s in remed:
                 if s.get("evidence_id"):
                     problems.append((cid, "remediation step carrying evidence_id"))
             # coverage: every finding resource has remediation + verification
             rem_ops = {}
-            for s in remed: rem_ops.setdefault(s["resource_id"], set()).add(s["operation"])
+            for s in remed: rem_ops.setdefault((s["system_id"], s["resource_id"]), set()).add(s["operation"])
             ver_ops = {}
-            for s in verif: ver_ops.setdefault(s["resource_id"], set()).add(s["operation"])
+            for s in verif: ver_ops.setdefault((s["system_id"], s["resource_id"]), set()).add(s["operation"])
             for fstep in findings:
-                rid = fstep["resource_id"]
+                rid = (fstep["system_id"], fstep["resource_id"])
                 need_r, need_v = COVERAGE[fstep["operation"]]
                 if need_r is None:  # exposed PII: redact or anonymize
-                    ok_r = bool(rem_ops.get(rid) & {"REDACT_RECORD", "ANONYMIZE_RECORD"})
-                    ok_v = bool(ver_ops.get(rid) & {"VERIFY_RECORD_REDACTED", "VERIFY_RECORD_ANONYMIZED"})
+                    ok_r = bool(rem_ops.get(rid, set()) & {"REDACT_RECORD", "ANONYMIZE_RECORD"})
+                    ok_v = bool(ver_ops.get(rid, set()) & {"VERIFY_RECORD_REDACTED", "VERIFY_RECORD_ANONYMIZED"})
                 else:
                     ok_r = need_r in rem_ops.get(rid, set())
                     ok_v = need_v in ver_ops.get(rid, set())
@@ -121,8 +134,10 @@ def main(path):
         # cited evidence exists
         for s in steps:
             ev = s.get("evidence_id") or ""
-            if ev and not (ev in manifest or re.fullmatch(r"(activity|audit)_\d+", ev)):
+            if ev and ev not in evidence_times:
                 problems.append((cid, f"cited evidence {ev} not in manifest/activity/audit"))
+            if ev in evidence_times and evidence_times[ev] > audit_times.get(cid, ""):
+                problems.append((cid, f"post-audit citation {ev}"))
 
     by = {}
     for cid, msg in problems:

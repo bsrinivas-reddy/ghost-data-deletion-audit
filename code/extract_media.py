@@ -6,7 +6,7 @@ the source file_id so the audit engine cites the original evidence, never the
 extraction cache. No corpus facts are baked in: everything below is parsed
 from the extracted text at run time.
 """
-import csv, json, os, re, subprocess, sys
+import csv, hashlib, json, os, re, subprocess, sys
 
 PREFIXES = ("account", "tombstone", "search", "cache", "support", "analytics",
             "telemetry", "data_flow", "backup", "audit_record", "export",
@@ -49,12 +49,12 @@ def extract_text(path):
     try:
         if ext == ".pdf":
             return subprocess.run(["pdftotext", "-layout", path, "-"],
-                                  capture_output=True, text=True, timeout=60).stdout
+                                  capture_output=True, text=True, timeout=60, check=True).stdout
         if ext == ".png":
             return subprocess.run(["tesseract", path, "-"],
-                                  capture_output=True, text=True, timeout=120).stdout
-    except Exception:
-        return ""
+                                  capture_output=True, text=True, timeout=120, check=True).stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"Cannot extract evidence {os.path.basename(path)}: install tesseract-ocr and poppler-utils and check the source file") from exc
     return ""
 
 def guess_state(rid, seg, whole):
@@ -154,6 +154,8 @@ def main(ds, outdir):
             continue
         full = os.path.join(ds, path)
         text = extract_text(full)
+        if not text.strip():
+            raise RuntimeError(f"Empty media extraction for {path}; refusing to silently omit evidence")
         recs = parse_records(text, os.path.splitext(path)[1].lower())
         for r in recs:
             r["observed_at"] = row["captured_at"]
@@ -161,6 +163,8 @@ def main(ds, outdir):
             json.dump({"file_id": row["file_id"], "file_path": path,
                        "captured_at": row["captured_at"],
                        "extractor": "pdftotext/tesseract",
+                       "text": text,
+                       "source_sha256": hashlib.sha256(open(full, "rb").read()).hexdigest(),
                        "records": recs}, g, indent=2)
         n += 1
         print(f"{row['file_id']}: {len(recs)} resources from {os.path.basename(path)}")

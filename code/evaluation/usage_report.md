@@ -1,59 +1,34 @@
-# Token Usage and Cost Analysis - final full-dataset run
+# Model usage and cost
 
-## Summary (the run that produced the submitted output.csv)
+## Full 518-request prediction run
 
-| Provider | Model | Calls | Input tokens | Output tokens | Total tokens | Avg tokens/request | Estimated cost |
-|---|---|---|---|---|---|---|---|
-| none (deterministic run) | - | 0 | 0 | 0 | 0 | 0 | $0.00 |
-| **Overall** | | **0** | **0** | **0** | **0** | **0** | **$0.00** |
+| Provider | Model | Calls | Input tokens | Output tokens | Total tokens | Tokens/request | Total cost | Cost/request |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| None, deterministic execution | None | 0 | 0 | 0 | 0 | 0 | $0.00 | $0.00 |
+| Overall | | 0 | 0 | 0 | 0 | 0 | $0.00 | $0.00 |
 
-The submitted output.csv was produced by a fully deterministic run: identity
-resolution, footprint reconstruction, state-at-audit, policy application,
-and step emission are rule-based Python over the supplied dataset. No model
-calls of any kind were made, and none are simulated here. The brief asks
-agents to "keep behavior deterministic where possible"; this solution takes
-that to the limit and reports zero usage honestly.
+The prediction run uses Python rules, SQLite parsing, local Tesseract OCR and
+pdftotext, not a hosted model. These are execution usage totals, not a claim
+that no AI coding assistance was used during development. Development
+assistant token counts are not available as a verified aggregate and are not
+invented or included in the execution totals. Muse review is separate and
+pending; its usage totals are not available.
 
-## What was used instead of model calls
+## Optional model path
 
-- Intent: multilingual rule-based classifier (518/518 decided; 0 uncertain).
-- Media (11 PNGs, 4 PDFs): local OCR/text extraction (tesseract, pdftotext)
-  with a conservative identifier-association policy and provenance sidecars.
-- Identity: exact matching on emails (plus historical chains and their
-  sha256 hashes), phones, user ids, log correlation keys.
-- An independent deterministic semantic auditor (evaluation/semantic_audit.py)
-  checks the output against the challenge contract: 0 problems in 518 rows.
+`code/model_assist.py` has none, mock and gemini backends. The default is none.
+The intent path can classify UNKNOWN requests; media and per-case verification
+helpers are optional separate calls. A model's intent result can affect whether
+deletion is authorized, so it is not described as universally advisory-only.
+Verification annotations do not rewrite prediction rows.
 
-## Optional measured model path (implemented, off by default)
+Real Gemini calls read GEMINI_API_KEY from the environment and log API-returned
+input/output token counts to `code/usage_log.jsonl`. `summarize_usage()` groups
+these by model and excludes mock entries. Markdown totals are not automatically
+regenerated. No key was used and the live Gemini API path has not been verified.
+No paid calls are authorized; a free-looking key is not proof of zero-cost quota.
+The account owner must confirm their project tier and limits before any call.
 
-`code/model_assist.py` implements three optional assists on runtime inputs,
-all advisory-only (the deterministic output is never rewritten by a model):
-
-- **intent** - second opinion when the rule classifier is uncertain;
-- **media** - structuring of noisy OCR text;
-- **verify** - per-case structural review of the emitted audit plan
-  (`python3 code/model_assist.py verify output.csv gemini`), which performs
-  one real, measured call per reviewed case when a backend is selected.
-
-The `gemini` backend reads GEMINI_API_KEY from the environment only and
-appends real per-call token counts from the API response to
-`code/evaluation/usage_log.jsonl`; rerunning this report from that log then
-shows per-model and overall totals. A free Google AI Studio key is
-sufficient: the official pricing page (ai.google.dev/gemini-api/docs/pricing,
-checked 2026-10-25) lists gemini-2.5-flash free-tier input and output as
-"Free of charge"; the official rate-limits page
-(ai.google.dev/gemini-api/docs/rate-limits, updated 2026-10-15) notes
-per-project daily request limits shown in AI Studio, so a full 518-case
-verify pass may need to run over more than one day or a review sample.
-Estimated cost on the free tier: $0.00. On the paid tier, at the published
-$0.30/1M input and $2.50/1M output, a 518-case verify pass at ~1,500 input
-and ~50 output tokens per case would cost roughly $0.30 in total.
-
-The author's environment held no API key, so the live API path has not been
-verified by the author; the pipeline (prompt routing, response parsing,
-usage logging, report aggregation) is covered by mock-backend tests
-(evaluation/test_model_assist.py, 6/6 passing). Mock entries are labeled
-and aggregated separately, never as model usage.
-
-No API keys, credentials, or sensitive configuration values are included in
-this submission.
+Mock pipeline tests pass 6/6. Mock tokens are synthetic, explicitly labeled,
+and excluded from real usage and cost. No mock call is reported as a real model
+call. No credentials or API keys are included.

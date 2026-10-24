@@ -13,8 +13,9 @@ golden samples cannot distinguish:
   T4 evidence captured after audit_at must not change the state at audit_at
   T5 workflow claims are never state proof (claim vs evidence conflicts)
   T7 a record observed after audit_at must not change the state at audit_at
-  T8 findings cite the truthful state-establishing file even when that file
-     was captured after audit_at (never an older/stand-in citation, never "")
+  T8 post-audit captures are inadmissible even with earlier record times
+  T9 future-dated records are not clamped to the capture date
+  T10 missing retained records and empty footprints fail closed
 
 Run: python3 code/evaluation/custom_tests.py
 """
@@ -30,6 +31,8 @@ HDR_ACT = ("activity_id,event_time,event_type,source_system,target_system,"
 HDR_MAN = "file_id,file_path,origin,captured_at\n"
 
 def write_fixture(root, identities, activities, manifest, evidence, audit_log=""):
+    import shutil
+    shutil.copyfile(os.path.join(os.path.dirname(__file__), "..", "..", "dataset", "deletion_rules.csv"), os.path.join(root, "deletion_rules.csv"))
     with open(os.path.join(root, "user_identities.csv"), "w") as f:
         f.write(HDR_ID + identities)
     with open(os.path.join(root, "user_audit_log.csv"), "w") as f:
@@ -171,7 +174,8 @@ def t4(root):
     check("T4 pre-audit exposure drives a finding", s == "INCOMPLETE" and "support_1" in finds,
           f"{s} finds={sorted(finds)}")
     check("T4 post-audit capture cannot rewrite state at audit",
-          True)
+          any(x["resource_id"] == "support_1" and x["phase"] == "FINDING"
+              and x["evidence_id"] == "evidence_1" for x in st))
     check("T4 post-audit-only violation is not a finding",
           "support_2" not in finds, f"finds={sorted(finds)}")
 
@@ -229,8 +233,7 @@ def t7(root):
           s == "COMPLETE" and "account_1" not in finds, f"{s} finds={sorted(finds)}")
 
 def t8(root):
-    # a violation recorded at/before audit_at in a file captured after
-    # audit_at: the finding must cite that file (truthful fallback), never ""
+    # Earlier record time does not make a post-audit capture admissible.
     write_fixture(
         root,
         "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n",
@@ -243,13 +246,177 @@ def t8(root):
     w = World(root)
     s, st = run(w, case("cA", "alice@example.com"))
     f = [x for x in st if x["phase"] == "FINDING" and x["resource_id"] == "account_1"]
-    check("T8 finding cites the truthful state-establishing file",
-          s == "INCOMPLETE" and f and f[0]["evidence_id"] == "evidence_1",
+    check("T8 post-audit capture is inadmissible even with an earlier record timestamp",
+          not f and not any(x["evidence_id"] == "evidence_1" for x in st),
           f"{s} findings={f}")
+
+def t9(root):
+    t7(root)
+    p = os.path.join(root, "evidence_files.csv")
+    text = open(p).read().replace("2026-09-13T00:00:00Z", "2026-09-05T00:00:00Z")
+    open(p, "w").write(text)
+    w = World(root)
+    status, steps = run(w, case("cA", "alice@example.com"))
+    check("T9 future-dated record in an earlier capture is not clamped into the past",
+          status == "COMPLETE" and not any(x["phase"] == "FINDING" for x in steps))
+
+def t10(root):
+    from audit.model import Observation, ABSENT, CAT_SECURITY
+    write_fixture(root, "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "", "", {})
+    w = World(root)
+    audit = CaseAudit(w, case("cA", "alice@example.com"))
+    status, steps = audit.run()
+    check("T10 no evidence does not certify COMPLETE", status == "INCOMPLETE" and steps == [] and bool(audit.issues))
+    w.obs.append(Observation("evidence_1", "evidence", "2026-09-05T00:00:00Z", "2026-09-05T00:00:00Z",
+                             "security_service", "audit_record_1", CAT_SECURITY, ABSENT,
+                             user_ids=frozenset({"user_1"})))
+    audit = CaseAudit(w, case("cA", "alice@example.com"))
+    status, steps = audit.run()
+    check("T10 absent mandatory retained record is unresolved, not COMPLETE",
+          status == "INCOMPLETE" and any("required retained record" in m for m in audit.issues)
+          and not any(s["phase"] == "REMEDIATION" for s in steps))
+
+def t11(root):
+    write_fixture(root, "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-09-12T00:00:00Z\n", "",
+        "evidence_1,evidence/records/pre.json,service_resource_export,2026-09-05T00:00:00Z\n",
+        {"evidence/records/pre.json": export_json(profiles=[("account_1", {"resource_id": "account_1", "customer_reference": "user_1", "email": "other@example.com"})])},
+        "audit_1,user_1,2026-09-12T00:00:00Z,email,alice@example.com,other@example.com\n")
+    w = World(root)
+    a = CaseAudit(w, case("cA", "alice@example.com"))
+    _, steps = a.run()
+    check("T11 future identity snapshot or change does not bind resources", a.uid is None and steps == [])
+
+
+def t12(root):
+    bundle = {"snapshots": [{"captured_at": "2026-09-05T00:00:00Z", "data_store": "privacy_treatment_service",
+        "collection": "operational_record_history", "records": [{"recorded_at": "2026-09-04T00:00:00Z",
+        "system": "account_service", "resource_id": "account_1", "record_type": "USER_PROFILE", "result": "NOT_FOUND", "lookup_value": "alice@example.com"}]}]}
+    write_fixture(root, "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "",
+        "evidence_1,evidence/records/pre.json,records_assurance_snapshot_bundle,2026-09-05T00:00:00Z\n",
+        {"evidence/records/pre.json": json.dumps(bundle)})
+    w = World(root)
+    status, steps = run(w, case("cA", "alice@example.com"))
+    check("T12 nested operational history uses its own system, result and record time",
+          status == "COMPLETE" and len(steps) == 1 and steps[0]["system_id"] == "account_service"
+          and steps[0]["state"] == "ABSENT" and steps[0]["evidence_id"] == "evidence_1")
+
+def t13(root):
+    from unittest.mock import patch
+    from extract_media import extract_text
+    with patch("subprocess.run", side_effect=FileNotFoundError("tesseract")):
+        try:
+            extract_text("missing.png")
+        except RuntimeError:
+            caught = True
+        else:
+            caught = False
+    check("T13 unavailable OCR fails loudly instead of dropping media evidence", caught)
+
+def t14(root):
+    write_fixture(root, "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n",
+        "act_1,2026-09-05T00:00:00Z,LINK_RESOURCE_IDENTITY,data_catalog,export_service,export_1,SUCCESS,Data catalog linked export_1 (DOC-1234) to alice@example.com and user_1.\n",
+        "evidence_1,evidence/doc.pdf,customer_statement,2026-09-04T00:00:00Z\n", {})
+    extracted = os.path.join(root, "extracted")
+    os.makedirs(extracted)
+    with open(os.path.join(extracted, "evidence_1.json"), "w") as f:
+        json.dump({"records": [], "text": "CUSTOMER STATEMENT DOC-1234"}, f)
+    w = World(root, extracted)
+    a = CaseAudit(w, case("cA", "alice@example.com"))
+    status, steps = a.run()
+    check("T14 catalog document alias supplies resource state from the artifact",
+          status == "INCOMPLETE" and any(s["phase"] == "FINDING" and s["evidence_id"] == "evidence_1" for s in steps) and not a.issues)
+    a = CaseAudit(w, case("cA", "alice@example.com", audit="2026-09-04T12:00:00Z"))
+    _, steps = a.run()
+    check("T14 future catalog alias cannot retroactively bind the document", steps == [])
+
+def t15(root):
+    from audit.model import Observation, ABSENT, PRESENT, CAT_PROFILE
+    write_fixture(root, "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "", "", {})
+    w = World(root)
+    w.obs = [Observation("replica", "evidence", "2026-09-04T00:00:00Z", "2026-09-04T00:00:00Z",
+        "account_service", "account_1", CAT_PROFILE, PRESENT, user_ids=frozenset({"user_1"}), store_id="eu_replica"),
+        Observation("primary", "evidence", "2026-09-05T00:00:00Z", "2026-09-05T00:00:00Z",
+        "account_service", "account_1", CAT_PROFILE, ABSENT, store_id="primary")]
+    status, steps = run(w, case("cA", "alice@example.com"))
+    check("T15 a newer clean primary cannot hide a stale residual replica",
+          status == "INCOMPLETE" and any(x["phase"] == "FINDING" and x["evidence_id"] == "replica" for x in steps))
+    w.obs.append(Observation("replica_clean", "evidence", "2026-09-06T00:00:00Z", "2026-09-06T00:00:00Z",
+        "account_service", "account_1", CAT_PROFILE, ABSENT, store_id="eu_replica"))
+    status, steps = run(w, case("cA", "alice@example.com"))
+    check("T15 completion requires every observed copy to be compliant", status == "COMPLETE" and steps[0]["evidence_id"] == "replica_clean")
+
+
+def t16(root):
+    from audit.parsers import parse_sql_file
+    sql = "CREATE TABLE snapshot_scope(origin_system TEXT,captured_at TEXT); INSERT INTO snapshot_scope VALUES('account_service','2026-09-05T00:00:00Z'); CREATE TABLE customer_profiles(resource_id TEXT,email TEXT); CREATE TABLE customer_search_documents(resource_id TEXT,email TEXT);"
+    write_fixture(root, "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "",
+                  "evidence_1,evidence/scoped.sql,database_inventory,2026-09-05T00:00:00Z\n", {"evidence/scoped.sql": sql})
+    w = World(root)
+    check("T16 empty scoped table is an absence capture, unscoped table is not",
+          len(w.captures) == 1 and w.captures[0].system_id == "account_service" and not w.captures[0].resource_ids)
+    from audit.model import Observation, CAT_PROFILE, CAT_SEARCH, PRESENT
+    for system, category, rid in [("account_service", CAT_PROFILE, "account_1"), ("search_service", CAT_SEARCH, "search_1")]:
+        w.obs.append(Observation("before", "evidence", "2026-09-04T00:00:00Z", "2026-09-04T00:00:00Z", system,rid,category,PRESENT,
+                                 user_ids=frozenset({"user_1"}),store_id="primary"))
+    status, steps = run(w, case("cA", "alice@example.com"))
+    findings = {x["resource_id"] for x in steps if x["phase"] == "FINDING"}
+    check("T16 scoped absence clears only its own service", status == "INCOMPLETE" and findings == {"search_1"})
+
+
+def t17(root):
+    from audit.model import Observation, CAT_SECURITY, RETAINED
+    write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "", "", {})
+    w = World(root)
+    w.obs = [Observation("retention", "evidence", "2026-09-04T00:00:00Z", "2026-09-04T00:00:00Z", "security_service", "audit_record_1", CAT_SECURITY, RETAINED,
+                         user_ids=frozenset({"user_1"}), attributes={"retention_until": "2026-09-06T00:00:00Z"})]
+    a = CaseAudit(w, case("cA","alice@example.com",audit="2026-09-05T00:00:00Z"))
+    check("T17 retained record is compliant while its retention period is active", a.run()[0] == "COMPLETE" and not a.issues)
+    a = CaseAudit(w, case("cA","alice@example.com",audit="2026-09-10T00:00:00Z"))
+    check("T17 expired conditional retention does not invent a default delete rule",
+          a.run()[0] == "INCOMPLETE" and any("expired" in msg for msg in a.issues))
+
+def t18(root):
+    write_fixture(root,
+        "user_1,Alice A,shared@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n"
+        "user_2,Bob B,shared@example.com,+1 555 000 0002,,2026-01-01T00:00:00Z\n", "",
+        "evidence_1,evidence/pre.json,service_resource_export,2026-09-05T00:00:00Z\n",
+        {"evidence/pre.json":export_json(profiles=[("account_2", {"resource_id":"account_2", "customer_reference":"user_2", "email":"shared@example.com"})])})
+    a = CaseAudit(World(root),case("cA","shared@example.com"))
+    status, steps = a.run()
+    check("T18 reused email does not bind either owner's resource",status == "INCOMPLETE" and not steps and any("multiple" in msg for msg in a.issues))
+
+def t19(root):
+    write_fixture(root,
+        "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n"
+        "user_2,Bob B,bob@example.com,+1 555 000 0002,,2026-01-01T00:00:00Z\n", "",
+        "evidence_1,evidence/pre.json,service_resource_export,2026-09-05T00:00:00Z\n"
+        "evidence_2,evidence/post.json,service_resource_export,2026-09-06T00:00:00Z\n",
+        {"evidence/pre.json":export_json(profiles=[("account_1", {"resource_id":"account_1", "customer_reference":"user_1", "email":"alice@example.com"})]),
+         "evidence/post.json":export_json(profiles=[("account_1", {"resource_id":"account_1", "customer_reference":"user_2", "email":"bob@example.com"})],captured="2026-09-06T00:00:00Z")})
+    a = CaseAudit(World(root),case("cA","alice@example.com"))
+    status, steps = a.run()
+    check("T19 phase-two resource reuse cannot import another owner's state",
+          status == "INCOMPLETE" and any(x["phase"] == "FINDING" and x["evidence_id"] == "evidence_1" for x in steps))
+    from audit.parsers import ids_from_deep
+    e,u,_,_ = ids_from_deep({"requester_email":"bob@example.com","agent_email":"alice@example.com", "actor":{"email":"alice@example.com","user_id":"user_1"}})
+    check("T19 actor and agent identity fields are not subject identity", e == {"bob@example.com"} and not u)
+
+def t20(root):
+    from audit.intent import classify
+    check("T20 explicit negation is not deletion",classify("Please do not delete my account.") == "NOT_DELETION")
+    check("T20 mixed authorization remains ambiguous",classify("Don't delete my invoices, but delete my account.") == "UNKNOWN")
+    check("T20 personal-details access request does not imply erasure",classify("Show me my personal details.") != "DELETION")
+    check("T20 Spanish negation does not authorize erasure",classify("No elimines mi cuenta.") == "NOT_DELETION")
+    from audit.model import Observation, CAT_SECURITY, RETAINED
+    write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "", "", {})
+    w = World(root)
+    w.obs = [Observation("old", "evidence", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z", "security_service", "audit_record_1", CAT_SECURITY, RETAINED,user_ids=frozenset({"user_1"}))]
+    status, steps = run(w,case("cA","alice@example.com"))
+    check("T20 prior compliant retention is not excluded by an invented lifecycle",status == "COMPLETE" and len(steps) == 1 and steps[0]["evidence_id"] == "old")
 
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

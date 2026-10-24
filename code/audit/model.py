@@ -65,6 +65,18 @@ class Observation:
     authoritative: bool = False  # collection-level capture: absence is provable
     claim: bool = False       # True for system_activity claims (never state proof)
     detail: str = ""
+    store_id: str = "service"
+    attributes: dict = field(default_factory=dict)
 
     def identifiers(self):
         return self.emails | self.user_ids | self.phones | self.hashes
+
+@dataclass
+class Capture:
+    evidence_id: str
+    captured_at: str
+    observed_at: str
+    system_id: str
+    collection: str
+    store_id: str
+    resource_ids: frozenset

@@ -21,7 +21,9 @@ def _ids_from_record(rec, keys_email, keys_uid, keys_phone, keys_hash):
     # named inconsistently across files (lookup_value, subject_key,
     # correlation_key, matched_value, owner_key, subject_reference...), so
     # classify by value shape, not by key name
-    for v in rec.values():
+    for key, v in rec.items():
+        if key.startswith(("agent_", "actor_", "assignee_", "operator_")):
+            continue
         if not isinstance(v, str) or not v:
             continue
         if EMAIL_FULL.fullmatch(v): emails.add(v.lower())
@@ -61,11 +63,14 @@ def ids_from_deep(rec):
         if isinstance(v, dict):
             e2, u2, p2, h2 = ids_from(v)
             em.update(e2); ui.update(u2); ph.update(p2); ha.update(h2)
-            for x in v.values(): walk(x)
+            for key, x in v.items():
+                if key not in ("agent", "actor", "assignee", "operator"):
+                    walk(x)
         elif isinstance(v, list):
             for x in v: walk(x)
-    for v in rec.values():
-        walk(v)
+    for key, v in rec.items():
+        if key not in ("agent", "actor", "assignee", "operator"):
+            walk(v)
     return frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)
 
 REF_SYSTEM = [
@@ -129,6 +134,7 @@ COLLECTION_CATEGORY = {
     ("support_platform", "support_conversations"): CAT_SUPPORT_MSG,
     ("support_platform", "customer_support_tickets"): CAT_SUPPORT_MSG,
     ("support_platform", "support_attachments"): CAT_SUPPORT_ATT,
+    ("support_platform", "ticket_attachments"): CAT_SUPPORT_ATT,
     ("analytics_platform", "customer_analytics_reports"): CAT_ANALYTICS,
     ("analytics_platform", "customer_analytics_profiles"): CAT_ANALYTICS,
     ("telemetry_platform", "product_telemetry"): CAT_TELEMETRY,
@@ -145,6 +151,7 @@ COLLECTION_CATEGORY = {
     ("notification_service", "email_delivery_logs"): CAT_EMAILLOG,
     ("cache_service", "cache_entries"): CAT_CACHE,
     ("legal_service", "legal_hold_records"): CAT_LEGAL,
+    ("legal_service", "retained_order_records"): CAT_LEGAL,
 }
 
 RECORD_TYPE_CATEGORY = {
@@ -232,28 +239,40 @@ def parse_sql_file(path, file_id, captured_at):
     obs = []
     tables = [r[0] for r in con.execute(
         "SELECT name FROM sqlite_master WHERE type='table'")]
-    collections = {}  # (system, collection) -> set of resource_ids present
+    collections = {}
+    scope = dict(con.execute("SELECT origin_system, captured_at FROM snapshot_scope")) if "snapshot_scope" in tables else None
     for t in tables:
         if t == "snapshot_scope":
             continue
         if t.startswith("customer_data_"):  # generic topology tables
+            store = t.removeprefix("customer_data_")
             for rid, system, coll, rec_json in con.execute(
                     f'SELECT resource_id, origin_system, collection_name, record_json FROM "{t}"'):
                 rec = json.loads(rec_json)
+                if coll == "operational_record_history":
+                    history, _ = _parse_json_data({"records": [rec]}, file_id, captured_at)
+                    obs.extend(history)
+                    continue
                 cat = category_for(system, coll)
                 st = state_for_record(cat, rec)
                 em, ui, ph, ha = ids_from_deep(rec)
                 obs.append(Observation(file_id, "evidence", captured_at, captured_at,
                                        system, rid, cat, st, frozenset(em), frozenset(ui),
                                        frozenset(ph), frozenset(ha),
-                                       collection=f"{system}/{coll}", authoritative=True))
+                                       collection=f"{system}/{coll}", authoritative=True,
+                                       store_id=store, attributes=rec))
                 obs.extend(bind_obs_for_refs(rec, file_id, captured_at, captured_at,
                                              em, ui, ph, ha))
-                collections.setdefault((system, coll), set()).add(rid)
+                collections.setdefault((system, coll, store, captured_at), set()).add(rid)
             continue
         if t not in SQL_TABLE_MAP:
             continue
         system, coll = SQL_TABLE_MAP[t]
+        if scope is not None and system not in scope:
+            continue
+        observed_at = scope[system] if scope is not None else captured_at
+        store = "failover_replica" if "failover_replica" in t else "primary"
+        collections.setdefault((system, coll, store, observed_at), set())
         cols = [c[1] for c in con.execute(f'PRAGMA table_info("{t}")')]
         for row in con.execute(f'SELECT * FROM "{t}"'):
             rec = dict(zip(cols, row))
@@ -263,13 +282,14 @@ def parse_sql_file(path, file_id, captured_at):
             cat = category_for(system, coll)
             st = state_for_record(cat, rec)
             em, ui, ph, ha = ids_from_deep(rec)
-            obs.append(Observation(file_id, "evidence", captured_at, captured_at,
+            obs.append(Observation(file_id, "evidence", captured_at, observed_at,
                                    system, rid, cat, st, frozenset(em), frozenset(ui),
                                    frozenset(ph), frozenset(ha),
-                                   collection=f"{system}/{coll}", authoritative=True))
+                                   collection=f"{system}/{coll}", authoritative=True,
+                                   store_id=store, attributes=rec))
             obs.extend(bind_obs_for_refs(rec, file_id, captured_at, captured_at,
                                          em, ui, ph, ha))
-            collections.setdefault((system, coll), set()).add(rid)
+            collections.setdefault((system, coll, store, observed_at), set()).add(rid)
     con.close()
     return obs, collections
 
@@ -277,6 +297,9 @@ def parse_sql_file(path, file_id, captured_at):
 def parse_json_file(path, file_id, captured_at):
     with open(path) as f:
         d = json.load(f)
+    return _parse_json_data(d, file_id, captured_at)
+
+def _parse_json_data(d, file_id, captured_at):
     obs, collections = [], {}
     def coll_key(system, coll):
         collections.setdefault((system, coll), set())
@@ -294,21 +317,21 @@ def parse_json_file(path, file_id, captured_at):
                 em, ui, ph, ha = ids_from_deep(prof)
                 obs.append(Observation(file_id, "evidence", captured_at, t,
                     "account_service", rid, CAT_PROFILE, PRESENT,
-                    frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+                    frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha), attributes=prof))
         for prof in se.get("analytics_platform", {}).get("profiles", []):
             t = prof.get("observed_at", captured_at)
             em, ui, ph, ha = ids_from_deep(prof)
             st = state_for_record(CAT_ANALYTICS, prof)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "analytics_platform", prof["resource_id"], CAT_ANALYTICS, st,
-                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha), attributes=prof))
         for e in se.get("backup_service", {}).get("restore_entries", []):
             t = e.get("observed_at", captured_at)
             em, ui, ph, ha = ids_from_deep(e)
             st = state_for_record(CAT_BACKUP, e)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "backup_service", e["resource_id"], CAT_BACKUP, st,
-                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha), attributes=e))
         for e in se.get("export_service", {}).get("exports", []):
             t = e.get("observed_at", captured_at)
             em, ui, ph, ha = ids_from_deep(e)
@@ -316,7 +339,7 @@ def parse_json_file(path, file_id, captured_at):
             st = PRESENT if present else ABSENT
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "export_service", e["resource_id"], CAT_EXPORT, st,
-                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha), attributes=e))
         for e in se.get("integration_service", {}).get("connectors", []):
             t = e.get("observed_at", captured_at)
             em, ui, ph, ha = ids_from_deep(e)
@@ -337,14 +360,14 @@ def parse_json_file(path, file_id, captured_at):
             em, ui, ph, ha = ids_from_deep(e)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "security_service", e["resource_id"], CAT_SECURITY, RETAINED,
-                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha), attributes=e))
         for e in se.get("support_platform", {}).get("tickets", []):
             t = e.get("observed_at", captured_at)
             em, ui, ph, ha = ids_from_deep(e)
             st = state_for_record(CAT_SUPPORT_MSG, e)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "support_platform", e["resource_id"], CAT_SUPPORT_MSG, st,
-                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
+                frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha), attributes=e))
         return obs, collections
 
     if "snapshots" in d:  # customer_data_snapshot_bundle_*
@@ -355,17 +378,22 @@ def parse_json_file(path, file_id, captured_at):
             for rec in snap.get("records", []):
                 rid = rec.get("resource_id")
                 if not rid: continue
+                if coll == "operational_record_history":
+                    history, _ = _parse_json_data({"records": [rec]}, file_id, captured_at)
+                    obs.extend(history)
+                    continue
                 cat = category_for(system, coll)
                 st = state_for_record(cat, rec)
                 em, ui, ph, ha = ids_from_deep(rec)
                 obs.append(Observation(file_id, "evidence", captured_at, t,
                     system, rid, cat, st, frozenset(em), frozenset(ui),
                     frozenset(ph), frozenset(ha),
-                    collection=f"{system}/{coll}", authoritative=True))
+                    collection=f"{system}/{coll}", authoritative=True, attributes=rec))
                 obs.extend(bind_obs_for_refs(rec, file_id, captured_at, t,
                                              em, ui, ph, ha))
                 present_ids.add(rid)
-            collections[(system, coll)] = present_ids
+            if coll != "operational_record_history":
+                collections[(system, coll, "service", t)] = present_ids
         return obs, collections
 
     records = d.get("records")
@@ -414,6 +442,6 @@ def parse_json_file(path, file_id, captured_at):
             em, ui, ph, ha = ids_from_deep(rec)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 system, rid, cat, st, frozenset(em), frozenset(ui),
-                frozenset(ph), frozenset(ha)))
+                frozenset(ph), frozenset(ha), attributes=rec))
         return obs, collections
     return obs, collections

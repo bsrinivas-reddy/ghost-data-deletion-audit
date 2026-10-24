@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Evaluation harness: score output.csv-style predictions against
-dataset/sample_output.csv and write code/evaluation/evaluation_report.md.
+dataset/sample_output.csv. Prints metrics; does not rewrite reports.
 
 Usage: python3 code/evaluation/main.py [predictions_csv]
 Default predictions: output for the sample requests, produced here.
@@ -15,7 +15,7 @@ def score(world, ds):
         cases = {r["case_id"]: r for r in csv.DictReader(f)}
     with open(os.path.join(ds, "sample_output.csv")) as f:
         golden = {r["case_id"]: r for r in csv.DictReader(f)}
-    case_ok = step_ok = field_ok = field_tot = seq_ok = 0
+    case_ok = step_ok = field_ok = field_tot = seq_ok = field_count = 0
     details = []
     for cid in sorted(cases):
         audit = CaseAudit(world, cases[cid])
@@ -27,7 +27,10 @@ def score(world, ds):
         gold_n = [norm(s) for s in gsteps]
         status_ok = status == g["deletion_status"]
         case_ok += status_ok
-        fields = sum(1 for s in pred_n for k in s if k != "step_no")
+        field_ok += status_ok
+        field_count += 1 + 6 * max(len(gold_n), len(pred_n))
+        for ps, gs in zip(pred_n, gold_n):
+            field_ok += sum(ps[k] == gs[k] for k in gs)
         matched = 0
         used = [False]*len(pred_n)
         for gs in gold_n:
@@ -42,6 +45,7 @@ def score(world, ds):
     n = len(cases)
     return {
         "n": n, "case_accuracy": case_ok/n,
+        "fields_matched": field_ok, "fields_total": field_count,
         "status_matches": case_ok,
         "step_accuracy": step_ok/field_tot if field_tot else 1.0,
         "steps_matched": step_ok, "steps_total": field_tot,
@@ -58,6 +62,7 @@ def main():
     print(f"steps: {res['steps_matched']}/{res['steps_total']} matched "
           f"({res['step_accuracy']:.1%}), sequence-perfect cases: "
           f"{sum(1 for d in res['details'] if d[5])}/{res['n']}")
+    print(f"position-aligned fields: {res['fields_matched']}/{res['fields_total']}")
     for cid, ok, m, gl, pl, seq, ps, gs in res["details"]:
         flag = "OK " if (ok and seq) else ("~  " if ok else "X  ")
         print(f"{flag}{cid}: status {ps} vs {gs}; steps {m}/{max(gl,pl)}; seq {'exact' if seq else 'diff'}")
