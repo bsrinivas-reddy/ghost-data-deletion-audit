@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-87 checks pass across the custom fixtures in `custom_tests.py`:
+89 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -233,3 +233,19 @@ syntaxes. Its initial fourteen assertions failed before the change. Removing
 the two-line guard fails all twenty expanded assertions. The current full-run
 CSV is unchanged. Nested identity objects and bare role keys are outside this
 specific prefix guard; they are not claimed covered by this regression.
+
+## Operator-role review follow-through
+
+Muse's bounded review confirmed the scalar snake_case guard and identified weak
+end-to-end assertions. Those now check INCOMPLETE status and exact resource
+membership, not just empty plans. T30 exercises both identity-reader consumers:
+paired start/completion and scan events. Removing the guard fails both tests,
+as well as the twenty T29 assertions.
+
+The guard's precise scope is lowercase scalar keys beginning actor_, agent_,
+assignee_ or operator_. Mixed-case, camelCase, hyphenated or bare role keys,
+quoted role information inside body text, and detector hits with no trustworthy
+subject role remain unhandled. Actor-only self-service records cannot establish
+subject ownership without additional evidence. No phone-role guarantee is
+claimed: prefixed phone fields were not in the old phone reader. These limits
+are not repaired by treating a role spelling heuristic as proof of ownership.

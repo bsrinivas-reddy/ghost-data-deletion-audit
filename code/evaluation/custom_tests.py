@@ -568,14 +568,33 @@ def t29(root):
                       "user_2,Bob B,bob@example.com,+1 555 000 0002,,2026-01-01T00:00:00Z\n", "",
                       "evidence_1,evidence/read.log,central_observability_export,2026-09-05T00:00:00Z\n", {"evidence/read.log":log})
         w = World(sub)
-        _,alice = run(w,case("cA","alice@example.com")); _,bob = run(w,case("cB","bob@example.com"))
-        check(f"T29 actor does not own lookup resource subject={subject}", not alice and
-              (any(x["resource_id"] == "account_2" for x in bob) if subject else not bob))
+        alice_status,alice = run(w,case("cA","alice@example.com"))
+        bob_status,bob = run(w,case("cB","bob@example.com"))
+        check(f"T29 actor does not own lookup resource subject={subject}",
+              alice_status == bob_status == "INCOMPLETE" and
+              "account_2" not in {x["resource_id"] for x in alice} and
+              (("account_2" in {x["resource_id"] for x in bob}) == subject))
+
+
+def t30(root):
+    from audit.logparsers import parse_readback_log
+    lines = [
+        '2026-09-04T09:00:00Z service=account_service trace_id=role event=profile_lookup_started actor_email="alice@example.com" lookup_key="bob@example.com"\n'
+        '2026-09-04T09:00:01Z service=account_service trace_id=role event=profile_lookup_completed resource_id=account_2 rows=1\n',
+        '2026-09-04T09:00:00Z service=support_platform event=attachment_pii_scan resource_id=support_2 actor_email="alice@example.com" subject_reference="user_2"\n',
+    ]
+    for i,line in enumerate(lines):
+        path = os.path.join(root,f"consumer-{i}.log")
+        with open(path,"w") as f: f.write(line)
+        obs = parse_readback_log(path,"evidence_1","2026-09-05T00:00:00Z")
+        check(f"T30 operator-role guard consumer {i}", len(obs) == 1 and
+              obs[0].emails == (frozenset({"bob@example.com"}) if i == 0 else frozenset()) and
+              obs[0].user_ids == (frozenset() if i == 0 else frozenset({"user_2"})))
 
 
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)
