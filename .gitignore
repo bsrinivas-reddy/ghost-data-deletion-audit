@@ -1,11 +1,12 @@
-dataset/
-output.csv
-log.txt
-__pycache__/
 *.pyc
 .env
 .venv/
-venv/
+__pycache__/
 agent-trace/
 code/extracted/
+dataset
+dataset/
+log.txt
+output.csv
+venv/
 warnings.txt
