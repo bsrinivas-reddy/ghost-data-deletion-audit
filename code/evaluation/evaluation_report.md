@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-67 checks pass across the custom fixtures in `custom_tests.py`:
+87 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -221,3 +221,15 @@ Open, preexisting limits include empty/plain messages being treated as exposed,
 noncanonical phone formats, started-record context carried into completion,
 nested/prose log shapes and other text keys. These have not been established as
 current-corpus failures. No overall correctness approval is claimed.
+
+## Log subject-role isolation
+
+A separate synthetic lookup showed that actor_email could bind an unowned
+account resource to the operator's deletion case. The log identity sweep now
+uses the same actor_, agent_, assignee_ and operator_ exclusions as structured
+record parsing. T29 checks email, stable-ID and hash values under all four
+roles, genuine lookup-key controls, end-to-end ownership and all six log
+syntaxes. Its initial fourteen assertions failed before the change. Removing
+the two-line guard fails all twenty expanded assertions. The current full-run
+CSV is unchanged. Nested identity objects and bare role keys are outside this
+specific prefix guard; they are not claimed covered by this regression.
