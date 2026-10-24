@@ -50,6 +50,8 @@ def parse_activity(path):
             uids = set(UID_RE.findall(details))
             # deletion/sync claims: state hint only, kept as claim
             st = PRESENT
+            if et == "LINK_RESOURCE_IDENTITY":
+                st = BIND
             if et in ("DELETE_RECORD",) and r["reported_result"] == "SUCCESS":
                 st = ABSENT
             elif et in ("DISABLE_DATA_FLOW",) and r["reported_result"] == "SUCCESS":

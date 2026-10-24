@@ -17,6 +17,7 @@ RISK = "RISK"                  # backup restore allowed
 BLOCKED = "BLOCKED"            # backup restore blocked
 ABSENT = "ABSENT"              # authoritative proof the record is gone
 RETAINED = "RETAINED"          # record present and required by policy (audit/legal)
+BIND = "BIND"                  # identity cross-reference only; never a state proof
 
 # Data categories (mirror deletion_rules.csv data_category values, plus
 # DATA_FLOW for sync/connector processes which the rules treat via

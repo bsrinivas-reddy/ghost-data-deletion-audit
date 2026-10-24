@@ -1,5 +1,6 @@
 """Deletion-audit engine: reconstruct state at audit_at, apply policy, emit steps."""
 import csv, json, os
+from dataclasses import replace
 from .model import *
 from . import parsers, logparsers, activity, identity, intent
 
@@ -66,6 +67,13 @@ class World:
             self.obs.extend(o)
             for (system, coll), rids in c.items():
                 self.captures.append((cap, fid, system, coll, set(rids)))
+        # clamp: a record cannot carry an observation time after its capture
+        fixed = []
+        for o in self.obs:
+            if o.obs_time > o.captured_at:
+                o = replace(o, obs_time=o.captured_at)
+            fixed.append(o)
+        self.obs = fixed
         self.claims = activity.parse_activity(os.path.join(ds, "system_activity.csv"))
         self.ident = identity.Identities(ds)
 
@@ -117,8 +125,18 @@ class CaseAudit:
             return "NOT_APPLICABLE", []
         w = self.w
         # candidate observations bound to this identity, at/before audit_at
-        bound_ev = [o for o in w.obs if o.captured_at <= self.audit_at and self._bound(o)]
+        # discovery gates on the record's own time; citation (later) gates on
+        # the evidence file's capture time. A record that existed at audit_at
+        # is usable for footprint/state even when its file arrived later.
+        bound_ev = [o for o in w.obs if o.obs_time <= self.audit_at and self._bound(o)]
         bound_cl = [o for o in w.claims if o.obs_time <= self.audit_at and self._bound(o)]
+        # phase 2: once a resource belongs to the case, every observation of
+        # that resource informs its state (404 lookups, anonymized reads and
+        # clean listings carry no identifiers by definition).
+        member = {(o.system_id, o.resource_id) for o in bound_ev + bound_cl}
+        bound_ev = bound_ev + [o for o in w.obs
+                               if o.obs_time <= self.audit_at and not self._bound(o)
+                               and (o.system_id, o.resource_id) in member]
         # footprint: resources touched by the current request lifecycle, i.e.
         # with at least one observation in [requested_at, audit_at]; older
         # resources already compliant in their latest pre-request observation
@@ -139,7 +157,7 @@ class CaseAudit:
         # state at audit_at per resource: latest non-claim observation
         resources = {}
         for key, obs in footprint.items():
-            ev = [o for o in obs if not o.claim]
+            ev = [o for o in obs if not o.claim and o.state != BIND]
             state_obs = ev[-1] if ev else None
             resources[key] = {
                 "obs": obs,

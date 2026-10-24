@@ -40,6 +40,70 @@ HASH_KEYS = ("email_hash",)
 def ids_from(rec):
     return _ids_from_record(rec, EMAIL_KEYS, UID_KEYS, PHONE_KEYS, HASH_KEYS)
 
+def ids_from_deep(rec):
+    """Top-level plus nested objects (e.g. search document payloads)."""
+    em, ui, ph, ha = (set(x) for x in ids_from(rec))
+    def walk(v):
+        if isinstance(v, dict):
+            e2, u2, p2, h2 = ids_from(v)
+            em.update(e2); ui.update(u2); ph.update(p2); ha.update(h2)
+            for x in v.values(): walk(x)
+        elif isinstance(v, list):
+            for x in v: walk(x)
+    for v in rec.values():
+        walk(v)
+    return frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)
+
+REF_SYSTEM = [
+    ("account_", "account_service"), ("tombstone_", "identity_service"),
+    ("search_", "search_service"), ("cache_", "cache_service"),
+    ("support_", "support_platform"), ("analytics_", "analytics_platform"),
+    ("telemetry_", "telemetry_platform"), ("data_flow_", "integration_service"),
+    ("backup_", "backup_service"), ("audit_record_", "security_service"),
+    ("export_", "export_service"), ("marketing_", "marketing_service"),
+    ("object_", "support_platform"), ("legal_hold_", "legal_service"),
+    ("email_log_", "notification_service"), ("secondary_", "account_service")]
+
+def system_for_ref(rid):
+    for pfx, sysname in REF_SYSTEM:
+        if rid.startswith(pfx):
+            return sysname
+    return ""
+
+def bind_obs_for_refs(rec, file_id, captured_at, t, em, ui, ph, ha):
+    """Identity-only observations for resources referenced by this record
+    (e.g. a search document's source_resource_id). Never state proof."""
+    out = []
+    for ref in refs_from(rec):
+        system = system_for_ref(ref)
+        if not system:
+            continue
+        out.append(Observation(file_id, "evidence", captured_at, t, system, ref,
+                               category_for(system, ""), BIND, em, ui, ph, ha,
+                               detail="cross-reference"))
+    return out
+
+REF_RE = re.compile(
+    r"^(account|analytics|support|search|backup|data_flow|export|tombstone|"
+    r"audit_record|object|cache|marketing|telemetry|secondary|email_log|"
+    r"legal_hold)_\d+$")
+
+def refs_from(rec):
+    """Cross-resource references such as a search doc's source_resource_id."""
+    out = set()
+    def walk(v):
+        if isinstance(v, dict):
+            for k, x in v.items():
+                if (isinstance(x, str) and k != "resource_id"
+                        and k.endswith("resource_id") and REF_RE.match(x)):
+                    out.add(x)
+                else:
+                    walk(x)
+        elif isinstance(v, list):
+            for x in v: walk(x)
+    walk(rec)
+    return out
+
 # ------------------------------------------------- collection interpretation
 # (system, collection) -> category
 COLLECTION_CATEGORY = {
@@ -48,13 +112,16 @@ COLLECTION_CATEGORY = {
     ("search_service", "customer_search_documents"): CAT_SEARCH,
     ("search_service", "search_documents"): CAT_SEARCH,
     ("support_platform", "support_records"): CAT_SUPPORT_MSG,
+    ("support_platform", "support_conversations"): CAT_SUPPORT_MSG,
     ("support_platform", "customer_support_tickets"): CAT_SUPPORT_MSG,
     ("support_platform", "support_attachments"): CAT_SUPPORT_ATT,
     ("analytics_platform", "customer_analytics_reports"): CAT_ANALYTICS,
     ("analytics_platform", "customer_analytics_profiles"): CAT_ANALYTICS,
     ("telemetry_platform", "product_telemetry"): CAT_TELEMETRY,
     ("integration_service", "connector_subscriptions"): CAT_DATAFLOW,
+    ("integration_service", "connector_configurations"): CAT_DATAFLOW,
     ("backup_service", "backup_restore_entries"): CAT_BACKUP,
+    ("backup_service", "backup_catalog"): CAT_BACKUP,
     ("security_service", "security_audit_events"): CAT_SECURITY,
     ("security_service", "security_audit_records"): CAT_SECURITY,
     ("export_service", "customer_exports"): CAT_EXPORT,
@@ -161,11 +228,13 @@ def parse_sql_file(path, file_id, captured_at):
                 rec = json.loads(rec_json)
                 cat = category_for(system, coll)
                 st = state_for_record(cat, rec)
-                em, ui, ph, ha = ids_from(rec)
+                em, ui, ph, ha = ids_from_deep(rec)
                 obs.append(Observation(file_id, "evidence", captured_at, captured_at,
                                        system, rid, cat, st, frozenset(em), frozenset(ui),
                                        frozenset(ph), frozenset(ha),
                                        collection=f"{system}/{coll}", authoritative=True))
+                obs.extend(bind_obs_for_refs(rec, file_id, captured_at, captured_at,
+                                             em, ui, ph, ha))
                 collections.setdefault((system, coll), set()).add(rid)
             continue
         if t not in SQL_TABLE_MAP:
@@ -179,11 +248,13 @@ def parse_sql_file(path, file_id, captured_at):
                 continue
             cat = category_for(system, coll)
             st = state_for_record(cat, rec)
-            em, ui, ph, ha = ids_from(rec)
+            em, ui, ph, ha = ids_from_deep(rec)
             obs.append(Observation(file_id, "evidence", captured_at, captured_at,
                                    system, rid, cat, st, frozenset(em), frozenset(ui),
                                    frozenset(ph), frozenset(ha),
                                    collection=f"{system}/{coll}", authoritative=True))
+            obs.extend(bind_obs_for_refs(rec, file_id, captured_at, captured_at,
+                                         em, ui, ph, ha))
             collections.setdefault((system, coll), set()).add(rid)
     con.close()
     return obs, collections
@@ -206,27 +277,27 @@ def parse_json_file(path, file_id, captured_at):
                 obs.append(Observation(file_id, "evidence", captured_at, t,
                     "account_service", rid, CAT_PROFILE, ABSENT))
             else:
-                em, ui, ph, ha = ids_from(prof)
+                em, ui, ph, ha = ids_from_deep(prof)
                 obs.append(Observation(file_id, "evidence", captured_at, t,
                     "account_service", rid, CAT_PROFILE, PRESENT,
                     frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
         for prof in se.get("analytics_platform", {}).get("profiles", []):
             t = prof.get("observed_at", captured_at)
-            em, ui, ph, ha = ids_from(prof)
+            em, ui, ph, ha = ids_from_deep(prof)
             st = state_for_record(CAT_ANALYTICS, prof)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "analytics_platform", prof["resource_id"], CAT_ANALYTICS, st,
                 frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
         for e in se.get("backup_service", {}).get("restore_entries", []):
             t = e.get("observed_at", captured_at)
-            em, ui, ph, ha = ids_from(e)
+            em, ui, ph, ha = ids_from_deep(e)
             st = state_for_record(CAT_BACKUP, e)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "backup_service", e["resource_id"], CAT_BACKUP, st,
                 frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
         for e in se.get("export_service", {}).get("exports", []):
             t = e.get("observed_at", captured_at)
-            em, ui, ph, ha = ids_from(e)
+            em, ui, ph, ha = ids_from_deep(e)
             present = e.get("download_available", True)
             st = PRESENT if present else ABSENT
             obs.append(Observation(file_id, "evidence", captured_at, t,
@@ -234,14 +305,14 @@ def parse_json_file(path, file_id, captured_at):
                 frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
         for e in se.get("integration_service", {}).get("connectors", []):
             t = e.get("observed_at", captured_at)
-            em, ui, ph, ha = ids_from(e)
+            em, ui, ph, ha = ids_from_deep(e)
             st = state_for_record(CAT_DATAFLOW, e)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "integration_service", e["resource_id"], CAT_DATAFLOW, st,
                 frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
         for e in se.get("search_service", {}).get("index_queries", []):
             t = e.get("observed_at", captured_at)
-            em, ui, ph, ha = ids_from(e)
+            em, ui, ph, ha = ids_from_deep(e)
             res = str(e.get("result", "")).lower()
             st = PRESENT if res in ("hit", "found") else ABSENT
             obs.append(Observation(file_id, "evidence", captured_at, t,
@@ -249,13 +320,13 @@ def parse_json_file(path, file_id, captured_at):
                 frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
         for e in se.get("security_service", {}).get("audit_records", []):
             t = e.get("observed_at", captured_at)
-            em, ui, ph, ha = ids_from(e)
+            em, ui, ph, ha = ids_from_deep(e)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "security_service", e["resource_id"], CAT_SECURITY, RETAINED,
                 frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)))
         for e in se.get("support_platform", {}).get("tickets", []):
             t = e.get("observed_at", captured_at)
-            em, ui, ph, ha = ids_from(e)
+            em, ui, ph, ha = ids_from_deep(e)
             st = state_for_record(CAT_SUPPORT_MSG, e)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "support_platform", e["resource_id"], CAT_SUPPORT_MSG, st,
@@ -272,11 +343,13 @@ def parse_json_file(path, file_id, captured_at):
                 if not rid: continue
                 cat = category_for(system, coll)
                 st = state_for_record(cat, rec)
-                em, ui, ph, ha = ids_from(rec)
+                em, ui, ph, ha = ids_from_deep(rec)
                 obs.append(Observation(file_id, "evidence", captured_at, t,
                     system, rid, cat, st, frozenset(em), frozenset(ui),
                     frozenset(ph), frozenset(ha),
                     collection=f"{system}/{coll}", authoritative=True))
+                obs.extend(bind_obs_for_refs(rec, file_id, captured_at, t,
+                                             em, ui, ph, ha))
                 present_ids.add(rid)
             collections[(system, coll)] = present_ids
         return obs, collections
@@ -324,7 +397,7 @@ def parse_json_file(path, file_id, captured_at):
             else:
                 st = state_for_record(cat, rec)
             if system == "security_service": st = RETAINED if st != ABSENT else ABSENT
-            em, ui, ph, ha = ids_from(rec)
+            em, ui, ph, ha = ids_from_deep(rec)
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 system, rid, cat, st, frozenset(em), frozenset(ui),
                 frozenset(ph), frozenset(ha)))
