@@ -203,6 +203,8 @@ def parse_readback_log(path, file_id, captured_at):
             if ev in LOOKUP_DONE:
                 system, cat = LOOKUP_DONE[ev]
                 start = pending.pop((a.get("service", system), trace), {})
+                if start.get("resource_id") and a.get("resource_id") and start["resource_id"] != a["resource_id"]:
+                    start = {}
                 merged = dict(start); merged.update(a)
                 rid = a.get("resource_id")
                 if not rid:

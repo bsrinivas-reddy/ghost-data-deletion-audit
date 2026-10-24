@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-89 checks pass across the custom fixtures in `custom_tests.py`:
+94 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -249,3 +249,17 @@ subject role remain unhandled. Actor-only self-service records cannot establish
 subject ownership without additional evidence. No phone-role guarantee is
 claimed: prefixed phone fields were not in the old phone reader. These limits
 are not repaired by treating a role spelling heuristic as proof of ownership.
+
+## Explicit lookup-resource agreement
+
+A new synthetic same-service/same-trace lookup start for account_1 followed by a
+completion for account_2 imported account_1's subject into account_2. The parser
+now discards start context only when both resource IDs are supplied and differ.
+The completion's own identity/state remains usable, matching IDs still inherit
+the lookup subject, and a start lacking a resource ID retains trace correlation.
+T31 covers these four paths. T32 checks final case ownership and later trace
+reuse. Removing the guard fails two parser checks and the end-to-end check.
+The corpus contains 572 starts and 983 completed read events but no explicit
+start/completion resource mismatches; full output is unchanged. Missing IDs,
+same-resource concurrent reuse, event-family mismatch and untrusted start
+context are not resolved by this narrow agreement check.

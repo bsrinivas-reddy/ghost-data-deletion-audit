@@ -592,9 +592,39 @@ def t30(root):
               obs[0].user_ids == (frozenset() if i == 0 else frozenset({"user_2"})))
 
 
+def t31(root):
+    from audit.logparsers import parse_readback_log
+    for start_rid, end_rid, own in (("account_1","account_2",False), ("account_1","account_2",True),
+                                    ("account_1","account_1",False), ("","account_2",False)):
+        tag = f"{start_rid}-{end_rid}-{own}"
+        start = f'2026-09-04T09:00:00Z service=account_service trace_id=reused event=profile_lookup_started lookup_key="alice@example.com" resource_id="{start_rid}"'
+        end = f'2026-09-04T09:00:01Z service=account_service trace_id=reused event=profile_lookup_completed resource_id="{end_rid}" rows=1' + (' subject_reference="user_2"' if own else '')
+        path = os.path.join(root,tag + ".log")
+        with open(path,"w") as f: f.write(start + "\n" + end + "\n")
+        obs = parse_readback_log(path,"evidence_1","2026-09-05T00:00:00Z")
+        expected = frozenset() if start_rid and start_rid != end_rid else frozenset({"alice@example.com"})
+        check(f"T31 resource agreement {tag}", len(obs) == 1 and obs[0].resource_id == end_rid and
+              obs[0].emails == expected and obs[0].user_ids == (frozenset({"user_2"}) if own else frozenset()) and obs[0].state == "PRESENT")
+
+
+def t32(root):
+    log = ('2026-09-04T09:00:00Z service=account_service trace_id=reused event=profile_lookup_started resource_id=account_1 lookup_key="alice@example.com"\n'
+           '2026-09-04T09:00:01Z service=account_service trace_id=reused event=profile_lookup_completed resource_id=account_2 rows=1 subject_reference="user_2"\n'
+           '2026-09-04T09:00:02Z service=account_service trace_id=reused event=profile_lookup_started resource_id=account_3 lookup_key="alice@example.com"\n'
+           '2026-09-04T09:00:03Z service=account_service trace_id=reused event=profile_lookup_completed resource_id=account_3 rows=0 http_status=404\n')
+    write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n"
+                  "user_2,Bob B,bob@example.com,+1 555 000 0002,,2026-01-01T00:00:00Z\n", "",
+                  "evidence_1,evidence/read.log,central_observability_export,2026-09-05T00:00:00Z\n", {"evidence/read.log":log})
+    w = World(root)
+    a_status,alice = run(w,case("cA","alice@example.com")); b_status,bob = run(w,case("cB","bob@example.com"))
+    check("T32 conflicting pair cannot import other resource identity", a_status == "COMPLETE" and
+          {x["resource_id"] for x in alice} == {"account_3"} and alice[0]["operation"] == "VERIFY_RECORD_ABSENT" and
+          b_status == "INCOMPLETE" and {x["resource_id"] for x in bob} == {"account_2"})
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)
