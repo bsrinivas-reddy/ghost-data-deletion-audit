@@ -60,6 +60,8 @@ def _state_from_attrs(cat, a):
     if a.get("marker_found") == "false": return PRESENT
     if a.get("decision") is not None:
         return BLOCKED if a["decision"] == "deny" else RISK
+    if cat == CAT_SUPPORT_MSG and state_for_record(cat, a) == IDENTIFIABLE:
+        return IDENTIFIABLE
     if a.get("message_text") is not None:
         return CLEAN if "[REDACTED]" in a["message_text"] else IDENTIFIABLE
     if a.get("restore_allowed") is not None:
@@ -95,6 +97,8 @@ def _ids_from_attrs(a):
         if EMAIL_RE.fullmatch(v): em.add(v.lower())
         elif UID_RE.fullmatch(v): ui.add(v)
         elif re.fullmatch(r"[0-9a-f]{64}", v): ha.add(v)
+    for k in ("message_text", "message_excerpt", "body", "content"):
+        em.update(e.lower() for e in EMAIL_RE.findall(a.get(k, "")))
     for k in ("requester_phone", "phone", "matched_value"):
         if a.get(k) not in (None, "", "null"):
             d = re.sub(r"\D", "", a[k])

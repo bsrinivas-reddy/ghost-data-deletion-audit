@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-48 checks pass across the custom fixtures in `custom_tests.py`:
+66 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -87,6 +87,9 @@ validate every extracted fact, or establish completeness of discovery.
 - T25: concurrent services sharing a trace ID cannot exchange lookup identities.
 - T26: nonempty search hits prove presence even when no result label is supplied.
   This test failed before the fix and passes after it.
+- T27: log redaction markers do not hide remaining body/header identifiers;
+  embedded emails can anchor retained-message discovery.
+- T28: body-PII and clean controls exercise all six supported log syntaxes.
 
 Fault injection: collapsing store IDs makes T15 fail; removing the identity cutoff
 makes T11 fail; removing retention expiry checks makes T17 fail. Disabling scope
@@ -188,3 +191,16 @@ classified ABSENT. The parser now honors explicit hit payloads; an unrecognized
 payload remains UNKNOWN, not assumed absent. This changed one full-run status
 and added supported findings. Citation fallback no longer exists; scoped
 absence is reconstructed explicitly and cannot use unscoped empty tables.
+
+## Retained-message log review
+
+The body-PII correction originally covered JSON/SQL record readers but missed
+log readbacks. A redaction marker anywhere in a log message previously certified
+it clean despite a remaining email or requester header. Log identity extraction
+also missed embedded content emails. Six synthetic counterexamples/controls and
+twelve syntax-path checks cover the correction. The initial four-case regression
+failed three checks before the fix. With the expanded fixture, removing the
+state correction fails four checks; removing embedded-email discovery fails two.
+Plain, bracket, pipe, syslog, JSON and cloud-runtime log variants are exercised.
+The full current corpus output is unchanged by this correction. No final-head
+Muse review has been run after the old-build review described above.

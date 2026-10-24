@@ -487,9 +487,54 @@ def t26(root):
     status,steps=run(World(root),case("cA","alice@example.com"))
     check("T26 search hits payload proves presence without a result label",status == "INCOMPLETE" and any(s["phase"] == "FINDING" and s["evidence_id"] == "evidence_1" for s in steps))
 
+def t27(root):
+    variants = [
+        ('message_text="[REDACTED] but contact alice@example.com"', "user_1", "INCOMPLETE"),
+        ('message_text="[REDACTED]" requester_email="alice@example.com"', "user_1", "INCOMPLETE"),
+        ('message_text="Contact alice@example.com"', "", "INCOMPLETE"),
+        ('message_text="[REDACTED]" requester_phone="+1 555 000 0001"', "user_1", "INCOMPLETE"),
+        ('message_excerpt="Contact alice@example.com"', "", "INCOMPLETE"),
+        ('message_text="[REDACTED]"', "user_1", "COMPLETE"),
+    ]
+    for i, (attrs, subject, expected) in enumerate(variants):
+        sub = os.path.join(root, str(i)); os.makedirs(sub)
+        log = f'2026-09-04T09:00:00Z level=INFO service=support_platform event=message_read resource_id=support_1 subject_ref="{subject}" {attrs}\n'
+        write_fixture(sub, "user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "",
+                      "evidence_1,evidence/message.log,central_observability_export,2026-09-05T00:00:00Z\n", {"evidence/message.log":log})
+        status, steps = run(World(sub), case("cA", "alice@example.com"))
+        check(f"T27 retained log content and headers variant {i}", status == expected and
+              any(s["resource_id"] == "support_1" and s["evidence_id"] == "evidence_1" and
+                  s["operation"] == ("REPORT_EXPOSED_PII" if expected == "INCOMPLETE" else "VERIFY_RECORD_REDACTED") for s in steps))
+
+
+def t28(root):
+    from audit.logparsers import parse_readback_log
+    for clean in (False, True):
+        attrs = {"service":"support_platform", "event":"message_read", "trace_id":"tr-test",
+                 "resource_id":"support_1", "subject_ref":"user_1",
+                 "message_text":"[REDACTED]" if clean else "[REDACTED] contact alice@example.com"}
+        kv = " ".join(f'{k}="{v}"' for k,v in attrs.items())
+        ts = "2026-09-04T09:00:00Z"
+        variants = [
+            f"{ts} {kv}",
+            f"{ts} [INFO] [support_platform] [tr-test] message_read: {kv}",
+            f"{ts} | INFO | support_platform | tr-test | message_read | {kv}",
+            f"{ts} <15>1 node support_platform tr-test - - {kv}",
+            f"{ts} " + json.dumps(attrs),
+            f'{ts} requestId=tr-test function=support_platform message="' + kv.replace('"', '\\"') + '"',
+        ]
+        for i, line in enumerate(variants):
+            path = os.path.join(root, f"{clean}-{i}.log")
+            with open(path,"w") as f: f.write(line + "\n")
+            obs = parse_readback_log(path,"evidence_1",ts)
+            check(f"T28 log format {i} clean={clean}", len(obs) == 1 and
+                  obs[0].state == ("CLEAN" if clean else "IDENTIFIABLE") and
+                  obs[0].emails == (frozenset() if clean else frozenset({"alice@example.com"})))
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)
