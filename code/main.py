@@ -19,6 +19,23 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     ds = sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, "dataset")
     out_path = sys.argv[2] if len(sys.argv) > 2 else os.path.join(root, "output.csv")
+    # media sidecars are regenerable and gitignored: rebuild them on a
+    # fresh checkout so the run is self-contained
+    import subprocess
+    extracted = os.path.join(root, "code", "extracted")
+    manifest = os.path.join(ds, "evidence_files.csv")
+    need = []
+    if os.path.exists(manifest):
+        with open(manifest) as f:
+            for r in csv.DictReader(f):
+                if not re.search(r"\.(png|jpg|jpeg|pdf)$", r["file_path"], re.I):
+                    continue
+                if not os.path.exists(os.path.join(extracted, r["file_id"] + ".json")):
+                    need.append(r["file_id"])
+    if need:
+        subprocess.run([sys.executable,
+                        os.path.join(root, "code", "extract_media.py"),
+                        ds, extracted], check=False)
     world = World(ds)
     with open(os.path.join(ds, "deletion_requests.csv")) as f:
         cases = list(csv.DictReader(f))
