@@ -21,9 +21,9 @@ COMPLIANT = {  # category -> (set of compliant states, verification op, remediat
     CAT_SUPPORT_ATT:({ABSENT}, "VERIFY_RECORD_ABSENT", "DELETE_RECORD", "REPORT_REMAINING_RECORD"),
     CAT_EXPORT:     ({ABSENT}, "VERIFY_RECORD_ABSENT", "DELETE_RECORD", "REPORT_REMAINING_RECORD"),
     CAT_MARKETING:  ({ABSENT}, "VERIFY_RECORD_ABSENT", "DELETE_RECORD", "REPORT_REMAINING_RECORD"),
-    CAT_SUPPORT_MSG:({CLEAN, ABSENT}, "VERIFY_RECORD_REDACTED", "REDACT_RECORD", "REPORT_EXPOSED_PII"),
-    CAT_EMAILLOG:   ({CLEAN, ABSENT}, "VERIFY_RECORD_REDACTED", "REDACT_RECORD", "REPORT_EXPOSED_PII"),
-    CAT_TOMBSTONE:  ({CLEAN, ABSENT}, "VERIFY_RECORD_REDACTED", "REDACT_RECORD", "REPORT_EXPOSED_PII"),
+    CAT_SUPPORT_MSG:({CLEAN}, "VERIFY_RECORD_REDACTED", "REDACT_RECORD", "REPORT_EXPOSED_PII"),
+    CAT_EMAILLOG:   ({CLEAN}, "VERIFY_RECORD_REDACTED", "REDACT_RECORD", "REPORT_EXPOSED_PII"),
+    CAT_TOMBSTONE:  ({CLEAN}, "VERIFY_RECORD_REDACTED", "REDACT_RECORD", "REPORT_EXPOSED_PII"),
     CAT_ANALYTICS:  ({ANONYMIZED, ABSENT}, "VERIFY_RECORD_ANONYMIZED", "ANONYMIZE_RECORD", "REPORT_EXPOSED_PII"),
     CAT_TELEMETRY:  ({ANONYMIZED, ABSENT}, "VERIFY_RECORD_ANONYMIZED", "ANONYMIZE_RECORD", "REPORT_EXPOSED_PII"),
     CAT_SECURITY:   ({RETAINED}, "VERIFY_RECORD_PRESENT", None, None),
@@ -306,7 +306,10 @@ class CaseAudit:
                         self.issues.append(f"{system}/{rid}: retention/hold expired at {until}; supplied conditional rule gives no default treatment.")
             if st == "UNKNOWN":
                 self.issues.append(f"{system}/{rid}: required state attributes are missing or unrecognized.")
-            violated = st not in (None, "UNKNOWN") and st not in compliant_states
+            missing_preserved = st == ABSENT and cat in REDACT_CATS
+            if missing_preserved:
+                self.issues.append(f"{system}/{rid}: required preserved record is absent; the operation table has no recovery action.")
+            violated = st not in (None, "UNKNOWN") and st not in compliant_states and not missing_preserved
             if st is None:
                 self.issues.append(f"{system}/{rid}: identity link has no admissible state evidence.")
             if violated and find_op is None:

@@ -455,9 +455,19 @@ def t23(root):
     finally:
         validator.DS = old
 
+def t24(root):
+    from audit.model import Observation, CAT_TOMBSTONE, ABSENT
+    write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "", "", {})
+    w = World(root)
+    w.obs = [Observation("missing", "evidence", "2026-09-04T00:00:00Z", "2026-09-04T00:00:00Z", "identity_service", "tombstone_1", CAT_TOMBSTONE, ABSENT,user_ids=frozenset({"user_1"}))]
+    a = CaseAudit(w,case("cA","alice@example.com"))
+    status, steps = a.run()
+    check("T24 absent required tombstone is not certified as redacted",status == "INCOMPLETE" and any("preserved record is absent" in msg for msg in a.issues)
+          and not any(s["phase"] in ("FINDING","REMEDIATION") for s in steps))
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

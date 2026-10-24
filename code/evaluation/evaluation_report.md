@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-45 checks pass across the custom fixtures in `custom_tests.py`:
+46 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -82,6 +82,8 @@ validate every extracted fact, or establish completeness of discovery.
 - T22: inactive legal holds and changed supplied policy actions cannot silently
   reuse the old category constants.
 - T23: malformed JSON plan shapes fail validation without a validator crash.
+- T24: an absent mandatory tombstone is not certified as redacted or given an
+  invented recovery operation.
 
 Fault injection: collapsing store IDs makes T15 fail; removing the identity cutoff
 makes T11 fail; removing retention expiry checks makes T17 fail. Disabling scope
@@ -121,6 +123,8 @@ Optional model-path mock tests: 6/6. These are pipeline tests, not live model ca
 19. Checked inactive hold flags and supplied policy actions; unsupported changes
     are explicit uncertainty rather than silent default treatment.
 20. Validator checks exact field names/types and operation-to-phase placement.
+21. Preservation/redaction categories require the preserved record, not absence;
+    unsupported recovery is reported as uncertainty.
 
 ## Limits and next work
 
