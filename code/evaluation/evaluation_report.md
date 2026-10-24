@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-40 checks pass across the custom fixtures in `custom_tests.py`:
+45 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -79,6 +79,9 @@ validate every extracted fact, or establish completeness of discovery.
 - T20: negation, mixed authorization, access-only requests and prior retention remain distinct.
 - T21: redacted headers do not hide an email in retained text; missing process
   booleans are UNKNOWN rather than automatically disabled or blocked.
+- T22: inactive legal holds and changed supplied policy actions cannot silently
+  reuse the old category constants.
+- T23: malformed JSON plan shapes fail validation without a validator crash.
 
 Fault injection: collapsing store IDs makes T15 fail; removing the identity cutoff
 makes T11 fail; removing retention expiry checks makes T17 fail. Disabling scope
@@ -115,6 +118,9 @@ Optional model-path mock tests: 6/6. These are pipeline tests, not live model ca
 17. Checked retained message content for direct email/phone exposure, not only
     header fields. Exact embedded emails remain discoverable subject anchors.
 18. Missing enabled/restore_allowed fields are uncertainty, not assumed safety.
+19. Checked inactive hold flags and supplied policy actions; unsupported changes
+    are explicit uncertainty rather than silent default treatment.
+20. Validator checks exact field names/types and operation-to-phase placement.
 
 ## Limits and next work
 

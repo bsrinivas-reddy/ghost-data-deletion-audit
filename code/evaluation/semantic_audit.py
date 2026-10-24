@@ -51,8 +51,11 @@ def main(path):
             for r in csv.DictReader(f):
                 evidence_times[r[idcol]] = r["event_time"]
     reqs = list(csv.DictReader(open(os.path.join(DS, "deletion_requests.csv"))))
-    rows = list(csv.DictReader(open(path)))
+    reader = csv.DictReader(open(path))
+    rows = list(reader)
     problems = []
+    if reader.fieldnames != ["case_id", "deletion_status", "steps_json"]:
+        problems.append(("SCHEMA", "header differs from exact three-column contract"))
 
     # row contract
     def key(cid):
@@ -71,6 +74,12 @@ def main(path):
             steps = json.loads(r["steps_json"])
         except ValueError:
             problems.append((cid, "steps_json is not valid JSON")); continue
+        if not isinstance(steps, list) or any(not isinstance(s, dict) for s in steps):
+            problems.append((cid, "steps_json must be an array of objects")); continue
+        required = {"step_no", "phase", "system_id", "resource_id", "operation", "state", "evidence_id"}
+        if any(set(s) != required or any(not isinstance(s[k], str) for k in required - {"step_no"})
+               or type(s["step_no"]) is not int for s in steps):
+            problems.append((cid, "step fields/types differ from exact contract")); continue
         status = r["deletion_status"]
         if status not in ("COMPLETE", "INCOMPLETE", "NOT_APPLICABLE"):
             problems.append((cid, f"illegal status {status}")); continue
@@ -85,6 +94,10 @@ def main(path):
         for s in steps:
             if (s.get("operation"), s.get("state")) not in LEGAL:
                 problems.append((cid, f"illegal op/state {s.get('operation')}/{s.get('state')}"))
+            operation = s.get("operation", "")
+            expected_phase = "VERIFICATION" if operation.startswith("VERIFY_") else "FINDING" if operation.startswith("REPORT_") else "REMEDIATION"
+            if s.get("phase") != expected_phase:
+                problems.append((cid, f"operation {operation} in wrong phase"))
             sort_key.append((PHASE_ORDER.get(s.get("phase"), 9),
                              OP_ORDER.index(s["operation"]) if s.get("operation") in OP_ORDER else 99,
                              s.get("system_id", ""), s.get("resource_id", "")))

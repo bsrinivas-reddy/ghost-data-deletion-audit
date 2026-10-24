@@ -422,9 +422,42 @@ def t21(root):
     check("T21 embedded message email remains a subject identity anchor",ids_from_deep(record)[0] == {"alice@example.com"})
     check("T21 absent process booleans are unknown, not disabled/blocked", state_for_record(CAT_DATAFLOW,{}) == "UNKNOWN" and state_for_record(CAT_BACKUP,{}) == "UNKNOWN")
 
+def t22(root):
+    from audit.model import Observation, CAT_LEGAL, RETAINED, CAT_PROFILE, PRESENT
+    write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "", "", {})
+    w = World(root)
+    w.obs = [Observation("hold", "evidence", "2026-09-04T00:00:00Z", "2026-09-04T00:00:00Z", "legal_service", "legal_hold_1", CAT_LEGAL, RETAINED,
+                         user_ids=frozenset({"user_1"}),attributes={"hold_active":False})]
+    a = CaseAudit(w,case("cA","alice@example.com"))
+    check("T22 inactive legal hold is unresolved without an explicit fallback rule",a.run()[0] == "INCOMPLETE" and any("inactive" in msg for msg in a.issues))
+    w.obs = [Observation("profile", "evidence", "2026-09-04T00:00:00Z", "2026-09-04T00:00:00Z", "account_service", "account_1", CAT_PROFILE, PRESENT,user_ids=frozenset({"user_1"}))]
+    w.rules[CAT_PROFILE]["required_action"] = "RETAIN"
+    a = CaseAudit(w,case("cA","alice@example.com"))
+    status, steps = a.run()
+    check("T22 policy input change cannot silently execute old category constants",status == "INCOMPLETE" and not steps and any("differs" in msg for msg in a.issues))
+
+def t23(root):
+    import contextlib, io
+    from evaluation import semantic_audit as validator
+    write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "", "", {})
+    with open(os.path.join(root,"deletion_requests.csv"),"w") as f:
+        f.write("case_id,audit_at\ncase_1,2026-09-10T00:00:00Z\n")
+    out = os.path.join(root,"output.csv")
+    old = validator.DS
+    validator.DS = root
+    try:
+        for value in ["{}", "[1]", '[{"step_no":1}]']:
+            with open(out,"w",newline="") as f:
+                writer=csv.writer(f);writer.writerow(["case_id","deletion_status","steps_json"]);writer.writerow(["case_1","COMPLETE",value])
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = validator.main(out)
+            check("T23 malformed plan rejected without validator crash: " + value,result == 1)
+    finally:
+        validator.DS = old
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

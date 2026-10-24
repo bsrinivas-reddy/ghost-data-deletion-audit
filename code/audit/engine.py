@@ -143,7 +143,7 @@ class World:
                 fid, "evidence", meta["captured_at"], r.get("observed_at", meta["captured_at"]),
                 r["system_id"], r["resource_id"], cat, r["state"],
                 frozenset(e.lower() for e in r.get("emails", [])),
-                frozenset(r.get("user_ids", [])), frozenset(r.get("phones", [])),
+                frozenset(r.get("user_ids", [])), frozenset(parsers.norm_phone(p) for p in r.get("phones", []) if parsers.norm_phone(p)),
                 frozenset(r.get("hashes", [])), detail="media-extraction"))
         return out
 
@@ -290,8 +290,17 @@ class CaseAudit:
             if cat != CAT_DATAFLOW and rule is None:
                 self.issues.append(f"{system}/{rid}: no supplied policy rule for {cat}.")
                 continue
+            if rule:
+                expected_action = ("DELETE" if cat in DELETE_CATS else "REDACT" if cat in REDACT_CATS else
+                                   "ANONYMIZE" if cat in ANONYMIZE_CATS else "RETAIN")
+                if rule["required_action"] != expected_action:
+                    self.issues.append(f"{system}/{rid}: supplied action {rule['required_action']} differs from supported {expected_action} policy; no action invented.")
+                    continue
             if cat in (CAT_SECURITY, CAT_LEGAL):
                 for record in info["latest"]:
+                    active = record.attributes.get("hold_active", record.attributes.get("legal_hold_active"))
+                    if cat == CAT_LEGAL and str(active).lower() in ("false", "0"):
+                        self.issues.append(f"{system}/{rid}: legal hold is inactive; supplied conditional rule gives no default treatment.")
                     until = record.attributes.get("retention_until") or record.attributes.get("retained_until") or record.attributes.get("hold_until")
                     if until and until < self.audit_at:
                         self.issues.append(f"{system}/{rid}: retention/hold expired at {until}; supplied conditional rule gives no default treatment.")
