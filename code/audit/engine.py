@@ -149,7 +149,10 @@ class CaseAudit:
             obs.sort(key=_ts)
             in_window = [o for o in obs if o.obs_time >= self.requested_at]
             if not in_window:
-                pre = obs[-1]
+                stated = [o for o in obs if o.state != BIND]
+                if not stated:
+                    continue  # only an old identity link: prior lifecycle
+                pre = stated[-1]
                 compliant = COMPLIANT.get(pre.category, ({ABSENT},))[0]
                 if pre.state in compliant or pre.state == ABSENT:
                     continue  # closed before this request

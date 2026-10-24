@@ -71,13 +71,43 @@ def guess_state(rid, seg, whole):
         return "RETAINED"
     return "PRESENT"
 
-def parse_records(text):
-    """One record per resource mention; identifiers from its local context."""
+def parse_records(text, source_ext=""):
+    """One record per resource mention.
+
+    Identity association policy (false-binding guard): identifiers on the
+    same line as a resource mention always attach. Identifiers from the
+    surrounding blank-line-delimited block attach only when the document
+    mentions a single resource - consoles listing several resources put
+    owner columns on separate lines, and block-level sweeps mis-bind them.
+    """
     records = {}
-    for m in RES_RE.finditer(text):
+    mentions = list(RES_RE.finditer(text))
+    distinct = {m.group(1) for m in mentions}
+    # A document about a single resource: every identifier in it belongs to
+    # that resource (label/value layouts scatter them across blocks).
+    single = len(distinct) <= 1
+    lines = text.splitlines()
+    # line index for each mention
+    pos = 0
+    line_starts = []
+    for ln in lines:
+        line_starts.append(pos)
+        pos += len(ln) + 1
+    import bisect
+    def block_of(li):
+        lo = li
+        while lo > 0 and lines[lo - 1].strip():
+            lo -= 1
+        hi = li
+        while hi + 1 < len(lines) and lines[hi + 1].strip():
+            hi += 1
+        return "\n".join(lines[lo:hi + 1])
+    for m in mentions:
         rid = m.group(1)
-        lo = max(0, m.start() - 300)
-        seg = text[lo:m.end() + 300]
+        li = bisect.bisect_right(line_starts, m.start()) - 1
+        seg = lines[li]
+        if single:
+            seg = text
         r = records.setdefault(rid, {
             "resource_id": rid, "system_id": system_for(rid),
             "category": "", "state": None,
@@ -90,9 +120,14 @@ def parse_records(text):
         if r["state"] in (None, "PRESENT") or st != "PRESENT":
             r["state"] = st
     out = []
+    is_pdf = source_ext == ".pdf"
     for r in records.values():
         r["category"] = SYSTEM_CATEGORY.get(r["system_id"], "UNKNOWN")
         if r["resource_id"].startswith("object_"):
+            r["category"] = "SUPPORT_ATTACHMENT"
+        elif r["resource_id"].startswith("support_") and is_pdf:
+            # a support reference inside a standalone customer document is
+            # the ticket's attachment (rule_06), not a shared conversation
             r["category"] = "SUPPORT_ATTACHMENT"
         if r["state"] is None:
             r["state"] = "PRESENT"
@@ -112,7 +147,7 @@ def main(ds, outdir):
             continue
         full = os.path.join(ds, path)
         text = extract_text(full)
-        recs = parse_records(text)
+        recs = parse_records(text, os.path.splitext(path)[1].lower())
         for r in recs:
             r["observed_at"] = row["captured_at"]
         with open(os.path.join(outdir, row["file_id"] + ".json"), "w") as g:

@@ -91,6 +91,30 @@ def _ids_from_attrs(a):
             if d: ph.add(d)
     return frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)
 
+JSON_LINE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)\s+(\{.*\})\s*$")
+
+def _iter_kv_lines(path):
+    """Yield (ts, attrs) per line; supports both key=value and JSON-payload
+    structured log lines."""
+    import json as _json
+    with open(path) as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line.strip():
+                continue
+            jm = JSON_LINE_RE.match(line)
+            if jm:
+                try:
+                    obj = _json.loads(jm.group(2))
+                except ValueError:
+                    continue
+                obj = {k: (str(v) if v is not None else "null") for k, v in obj.items()}
+                yield jm.group(1), obj, line
+                continue
+            m = re.match(r"(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)", line)
+            ts = m.group(1) if m else None
+            yield ts, kvs(line), line
+
 def parse_readback_log(path, file_id, captured_at):
     """resource_lookup_trace / syslog / service-event style logs.
 
@@ -99,11 +123,9 @@ def parse_readback_log(path, file_id, captured_at):
     """
     obs = []
     pending = {}  # trace_id -> attrs of started line
-    with open(path) as f:
-        for line in f:
-            m = re.match(r"(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)", line)
-            ts = m.group(1) if m else captured_at
-            a = kvs(line)
+    if True:
+        for ts, a, line in _iter_kv_lines(path):
+            ts = ts or captured_at
             ev = a.get("event", "")
             trace = a.get("trace_id", "")
             if ev in LOOKUP_START and trace:
