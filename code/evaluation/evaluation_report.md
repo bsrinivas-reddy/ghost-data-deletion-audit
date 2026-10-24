@@ -1,8 +1,9 @@
 # Evaluation Report - Ghost Data Deletion Audit
 
-All numbers below are produced by `python3 code/evaluation/main.py` (sample
-metrics) and `python3 code/evaluation/custom_tests.py` (custom cases) against
-the final engine that generated `output.csv`.
+All numbers are reproducible: `python3 code/main.py dataset output.csv`,
+then `python3 code/evaluation/main.py` (sample metrics),
+`python3 code/evaluation/semantic_audit.py` (spec-contract audit),
+`python3 code/evaluation/custom_tests.py`, `python3 code/evaluation/test_model_assist.py`.
 
 ## 1. Sample-set accuracy (32 golden cases, dataset/sample_output.csv)
 
@@ -10,90 +11,113 @@ the final engine that generated `output.csv`.
 |---|---|
 | Case-level deletion-status accuracy | 32/32 = 100% |
 | Step-level accuracy (field-exact step match) | 154/193 = 79.8% |
-| Field-level accuracy | identical to step-level: a step only counts when every field (phase, system_id, resource_id, operation, state, evidence_id) matches |
+| Field-level accuracy | identical to step-level: a step counts only when every field matches |
 | Sequence accuracy (full ordered match) | 9/32 = 28.1% |
 
 The remaining step gap is dominated by one class: resources whose only trace
-is a deletion-workflow claim in `system_activity.csv` (deleted accounts that
-read 404, anonymized analytics profiles). They carry no identity in any
-evidence file, so attributing them to a specific case would require guessing
-from overlapping time windows. This engine does not guess (see section 4).
+is a deletion-workflow claim in `system_activity.csv`. 16 of the 31
+sample-missing resources have zero occurrences in any evidence file; most of
+the rest occur only with all identifier fields explicitly null (anonymous
+404 lookups, anonymized analytics profiles). See section 4 for the measured
+investigation.
 
-## 2. Custom evaluation cases (participant-created)
+## 2. Independent semantic coverage audit (not golden-based)
 
-`code/evaluation/custom_tests.py` builds six synthetic datasets with known
-ground truth and runs the real engine over them. Result: 12/12 checks pass.
+`code/evaluation/semantic_audit.py` validates output.csv against the
+challenge contract itself: row set/order, legal (operation, state) pairs,
+phase/operation/system/resource ordering, citation rules (COMPLETE steps and
+all findings must cite existing file/activity/audit ids; INCOMPLETE
+remediation and future verification must be uncited), and full
+remediation-plus-verification coverage of every finding.
 
-1. **T1 - shared-window claim isolation**: two users with overlapping deletion
-   windows; an unattributed workflow claim inside both windows binds to
-   neither case, while identity-bound audit records bind correctly.
-2. **T2 - lookalike-email decoy**: a record carrying
-   `smartinez6461.jr@...` does not bind to the `smartinez6461@...` case and
-   cannot flip its status.
-3. **T3 - 404 binding discipline**: a 404 profile lookup binds through its own
-   `lookup_key`; another user's unrelated 404 in the same log does not leak in.
+Result: **518 rows, 0 problems.** (Its first run found 44 real defects -
+findings and COMPLETE verifications whose only state proof sat in files
+captured after `audit_at`; the engine now falls back to citing the truthful
+state-establishing observation, and drops COMPLETE verifications it cannot
+cite at all.)
+
+## 3. Custom evaluation cases (participant-created)
+
+`code/evaluation/custom_tests.py`: six synthetic datasets with known ground
+truth run through the real engine. Result: 12/12 checks pass.
+
+1. **T1 - shared-window claim isolation**: two users, overlapping deletion
+   windows, one unattributed workflow claim: binds to neither case.
+2. **T2 - lookalike-email decoy**: `smartinez6461.jr@...` does not bind to
+   the `smartinez6461@...` case.
+3. **T3 - 404 binding discipline**: a 404 lookup binds through its own
+   `lookup_key`; another user's 404 in the same log does not leak in.
 4. **T4 - temporal discipline**: evidence captured after `audit_at` cannot
-   rewrite the state at `audit_at`; violations visible only in post-audit
-   captures produce no findings.
-5. **T5/T5b - claims are not state proof**: a SUCCESS deletion claim cannot
-   override PRESENT evidence (stays INCOMPLETE); a FAILED claim cannot
-   override 404 evidence (stays COMPLETE).
+   rewrite the state at `audit_at`.
+5. **T5/T5b - claims are not state proof**: SUCCESS claim cannot override
+   PRESENT evidence; FAILED claim cannot override 404 evidence.
 
-## 3. Full-dataset run (518 evaluation cases)
+`code/evaluation/test_model_assist.py` adds 6/6 checks for the optional
+model pipeline (mock backend; no live calls).
+
+## 4. Unattributable workflow resources - measured investigation
+
+`system_activity.csv` contains 1,545 deletion-workflow claims. 928 of their
+resources are tied to a person through identity-bearing evidence after the
+full parse (SQL replicas, snapshot bundles, service exports, six log
+syntaxes, media consoles, cross-resource references). The remaining 617:
+
+- **453 occur in no evidence file at all** (238 accounts, 188 audit records,
+  others) - the only trace is the workflow claim itself.
+- **164 occur only in records with no identifiers** (anonymous 404
+  profile lookups in service exports, analytics profiles with all identity
+  fields explicitly null).
+
+We investigated every source-supported assignment route:
+- system_activity has no request/case id column; `details` texts are generic
+  ("Deletion worker submitted primary profile X to account_service").
+- request execution windows overlap heavily: a bare claim has a median of 4
+  candidate cases (only 58/1,545 claims have exactly one).
+- workflow bursts segmented at "submitted primary profile" markers mix
+  multiple requests (e.g. one burst holds three cases' resources), and
+  claims regularly land after the request's `reported_at`.
+- the best temporal assignment we could construct (ordered unique-window
+  matching) scored **0.04 precision** against golden ground truth.
+
+Conclusion: no source-supported attribution exists for these resources, and
+temporal guessing is measurably wrong, so the engine excludes them and
+decides each case from attributable evidence. On the sample set this costs
+most of the remaining step accuracy (the golden answers encode the
+generator's ground-truth mapping). 0 of 518 cases are decided with an empty
+footprint; every emitted status rests on cited evidence.
+
+## 5. Full-dataset run (518 evaluation cases)
 
 | Metric | Result |
 |---|---|
-| Rows produced | 518 (one per request, schema-validated) |
-| COMPLETE | 212 |
-| INCOMPLETE | 296 |
-| NOT_APPLICABLE (not deletion requests) | 10 |
-| Run time | ~1 second, pure Python stdlib, no network |
-| Deletion-workflow resources in system_activity | 1,545 |
-| of which attributable through identity-bearing evidence | 752 |
-| of which not attributable to any case | 793 (374 accounts, 196 audit records, 140 analytics, 45 others) |
-| COMPLETE cases with an empty (unverifiable) footprint | 24 (4.6%) |
+| Rows produced | 518, schema- and semantic-audit clean |
+| COMPLETE / INCOMPLETE / NOT_APPLICABLE | 168 / 340 / 10 |
+| Run time | ~2 s core + one-time media extraction (~20 s), stdlib only |
+| Identity-bound resources | 1,876 (was 849 before the log-syntax work) |
 
-## 4. Known limitations (honest)
+## 6. Failures found and improvements made
 
-- **Unattributable workflow resources.** When a resource appears only in
-  workflow claims and no identity-linked evidence ties it to a person,
-  assigning it to a case would be inference from shared time windows, which
-  produces false bindings (custom test T1 pins this). The engine excludes
-  such resources and decides each case from attributable evidence. On the
-  sample set this costs most of the remaining step accuracy; on the full set
-  793 resources are affected. 24 cases therefore verify as COMPLETE with an
-  empty footprint - these are the cases where the audit found no
-  identity-linked data at all, which is also what a genuinely completed
-  deletion looks like.
-- **Media evidence quality.** PNG consoles are read with local OCR
-  (tesseract); garbled text can hide a resource id. Association of
-  identifiers to resources is deliberately conservative (same-line, or
-  whole-document only when a single resource is present) to avoid false
-  bindings from multi-resource screens.
-- **Sample vs hidden set.** The 32 golden cases were used only to validate,
-  never as input to the engine. No golden labels, case ids, or per-case
-  constants are present in the code.
-
-## 5. Failures found and improvements made
-
-1. JSON-payload structured logs were parsed as key=value and silently dropped
-   - added a dual-format line reader (found via missing audit records).
-2. The media extractor's context window swept identifiers from neighbouring
-   rows of multi-resource consoles, falsely binding two users' connectors -
-   replaced with the conservative association policy above.
-3. The discovery gate used evidence-file capture time and dropped records
-   that existed at audit time (snapshots exported later) - discovery now
-   gates on the record's own timestamp; citation still requires the file to
-   have been captured by `audit_at`.
-4. Identities nested inside search-document payloads were missed - identity
-   extraction now recurses.
-5. Snapshot-bundle collection names were unmapped, silently losing category
-   and state for support/backup/connector records.
-6. Data-catalog LINK events were treated as state evidence - they are now
-   binding-only, and identity links older than the request no longer pull
-   prior-lifecycle resources into the current footprint.
-7. OCR-mangled resource ids (`data_flow.9846`) defeated exact id matching -
-   the extractor normalizes separator noise.
-8. Historical email changes had no explicit hash rows - sha256 hashes are now
-   derived for every known email (the dataset's documented hash convention),
-   which is what binds hash-correlated log lines to the right user.
+1. Four log syntaxes (cloud-runtime `message=` payloads, bracket, pipe,
+   syslog) were invisible to the parser - a universal line normalizer fixed
+   the largest coverage gap (bound resources 849 -> 1,726 overnight).
+2. Identity extraction keyed on field names missed emails carried in
+   `lookup_value` / `subject_reference` / `correlation_key` - replaced with
+   value-classified extraction.
+3. Findings and COMPLETE verifications could go uncited when the only state
+   proof sat in a post-`audit_at` capture - fixed with truthful fallback
+   citation; uncitable COMPLETE verifications are dropped.
+4. JSON-payload structured logs parsed as key=value - dual-format reader.
+5. Media extractor context windows false-bound neighbouring rows of
+   multi-resource consoles - conservative same-line/single-resource policy.
+6. Discovery gate used file capture time and dropped records existing at
+   audit time - record-time discovery gate with capture-time citation gate.
+7. Nested search-document identities missed - recursive identity walk.
+8. Snapshot-bundle collection names unmapped - category mapping added.
+9. Data-catalog LINK events treated as state evidence - binding-only now,
+   with prior-lifecycle exclusion.
+10. OCR-mangled resource ids (`data_flow.9846`) - separator-tolerant matching.
+11. Historical email hashes - sha256 derived for every known email per the
+    dataset's documented hash convention.
+12. Clean-room gap: a fresh clone silently lost media evidence - main.py
+    now self-bootstraps extraction; a fresh clone reproduces output.csv
+    byte-identically (verified).

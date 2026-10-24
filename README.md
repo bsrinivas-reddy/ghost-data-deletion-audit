@@ -47,11 +47,19 @@ policy decisions never depend on model output.
 
     export GEMINI_API_KEY=...        # free Google AI Studio tier is sufficient
     MODEL_ASSIST_BACKEND=gemini python3 code/main.py dataset output.csv
+    python3 code/model_assist.py verify output.csv gemini 518   # advisory review pass
 
 Real per-call token counts from the API response land in
 `code/evaluation/usage_log.jsonl`, and `code/evaluation/usage_report.md` is
 regenerated from that log (the committed copy documents the zero-usage
 deterministic run that produced this output.csv).
+
+## Evaluation
+
+    python3 code/evaluation/main.py              # golden-sample metrics
+    python3 code/evaluation/semantic_audit.py    # independent spec-contract audit (0 problems)
+    python3 code/evaluation/custom_tests.py      # participant-created cases (12/12)
+    python3 code/evaluation/test_model_assist.py # mock-backend pipeline tests (6/6)
 
 ## Submission packaging
 
