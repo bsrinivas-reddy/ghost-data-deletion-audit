@@ -619,12 +619,37 @@ def t32(root):
     a_status,alice = run(w,case("cA","alice@example.com")); b_status,bob = run(w,case("cB","bob@example.com"))
     check("T32 conflicting pair cannot import other resource identity", a_status == "COMPLETE" and
           {x["resource_id"] for x in alice} == {"account_3"} and alice[0]["operation"] == "VERIFY_RECORD_ABSENT" and
-          b_status == "INCOMPLETE" and not bob)
+          b_status == "INCOMPLETE" and "account_2" not in {x["resource_id"] for x in bob})
+
+
+def t33(root):
+    from audit.logparsers import parse_readback_log
+    start = {"service":"account_service", "trace_id":"pair", "event":"profile_lookup_started", "resource_id":"account_1", "lookup_key":"alice@example.com"}
+    end = {"service":"account_service", "trace_id":"pair", "event":"profile_lookup_completed", "resource_id":"account_2", "rows":"1", "subject_reference":"user_2"}
+    for mode in range(6):
+        lines = []
+        for i,attrs in enumerate((start,end)):
+            ts = f"2026-09-04T09:00:0{i}Z"
+            kv = " ".join(f'{k}="{v}"' for k,v in attrs.items())
+            lines.append([
+                f"{ts} {kv}",
+                f"{ts} [INFO] [account_service] [pair] {attrs['event']}: {kv}",
+                f"{ts} | INFO | account_service | pair | {attrs['event']} | {kv}",
+                f"{ts} <15>1 node account_service pair - - {kv}",
+                f"{ts} " + json.dumps(attrs),
+                f'{ts} requestId=pair function=account_service message="' + kv.replace('"', '\\"') + '"',
+            ][mode])
+        path = os.path.join(root,f"pair-{mode}.log")
+        with open(path,"w") as f: f.write("\n".join(lines) + "\n")
+        obs = parse_readback_log(path,"evidence_1","2026-09-05T00:00:00Z")
+        check(f"T33 mismatched pair passthrough format {mode}", len(obs) == 1 and
+              not obs[0].emails and obs[0].user_ids == frozenset({"user_2"}) and
+              "lookup_key" not in obs[0].attributes and obs[0].attributes["resource_id"] == "account_2")
 
 
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

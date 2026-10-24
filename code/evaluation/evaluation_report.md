@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-94 checks pass across the custom fixtures in `custom_tests.py`:
+100 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -263,3 +263,16 @@ The corpus contains 572 starts and 983 completed read events but no explicit
 start/completion resource mismatches; full output is unchanged. Missing IDs,
 same-resource concurrent reuse, event-family mismatch and untrusted start
 context are not resolved by this narrow agreement check.
+
+## Lookup-agreement review follow-through
+
+Muse verified the parser counterexamples in an isolated harness, not the full
+engine. Its assertion-strength findings were addressed: T32's Bob check names
+the resource instead of assuming an empty plan, and T33 checks completion
+attributes and discarded start lookup_key through all six log syntaxes.
+The corpus has 564 matched start/completion pairs: 264 carry both resource IDs
+and 300 have no start ID. The zero explicit mismatches statistic applies to the
+264 both-ID pairs, not all events. ID-less-start correlation stays unchanged;
+this guard does not prove those 300 pairs correct. Raw ID comparison is kept,
+not separator/case normalization without evidence of equivalent identifiers.
+No overall-engine correctness approval follows from this bounded review.
