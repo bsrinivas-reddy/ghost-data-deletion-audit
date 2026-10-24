@@ -38,7 +38,7 @@ satisfy the full finding/remediation contract when no violation can be proved.
 
 ## Full run
 
-518 rows, 2,469 steps: 162 COMPLETE, 346 INCOMPLETE, 10 NOT_APPLICABLE.
+518 rows, 2,515 steps: 159 COMPLETE, 349 INCOMPLETE, 10 NOT_APPLICABLE.
 The generated `output_uncertainty.md` records unresolved states.
 
 The independent validator currently reports **one contract problem**:
@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-37 checks pass across the custom fixtures in `custom_tests.py`:
+40 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -77,6 +77,8 @@ validate every extracted fact, or establish completeness of discovery.
 - T18: a reused email is ambiguous, not forcibly assigned.
 - T19: resource reuse and actor/agent identifiers cannot import another person's data.
 - T20: negation, mixed authorization, access-only requests and prior retention remain distinct.
+- T21: redacted headers do not hide an email in retained text; missing process
+  booleans are UNKNOWN rather than automatically disabled or blocked.
 
 Fault injection: collapsing store IDs makes T15 fail; removing the identity cutoff
 makes T11 fail; removing retention expiry checks makes T17 fail. Disabling scope
@@ -110,6 +112,9 @@ Optional model-path mock tests: 6/6. These are pipeline tests, not live model ca
     compliant observation is not proof that a retained resource left scope.
 15. Added actor/subject-role guards and cross-owner resource reuse uncertainty.
 16. Added conservative negation/mixed-intent handling without case/template labels.
+17. Checked retained message content for direct email/phone exposure, not only
+    header fields. Exact embedded emails remain discoverable subject anchors.
+18. Missing enabled/restore_allowed fields are uncertainty, not assumed safety.
 
 ## Limits and next work
 

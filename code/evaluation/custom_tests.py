@@ -414,9 +414,17 @@ def t20(root):
     status, steps = run(w,case("cA","alice@example.com"))
     check("T20 prior compliant retention is not excluded by an invented lifecycle",status == "COMPLETE" and len(steps) == 1 and steps[0]["evidence_id"] == "old")
 
+def t21(root):
+    from audit.parsers import state_for_record, ids_from_deep
+    from audit.model import CAT_SUPPORT_MSG, CAT_DATAFLOW, CAT_BACKUP, IDENTIFIABLE
+    record = {"requester_name":None,"requester_email":None,"requester_phone":None,"message_text":"Please send the update to alice@example.com."}
+    check("T21 redacted headers cannot hide PII in retained message text",state_for_record(CAT_SUPPORT_MSG,record) == IDENTIFIABLE)
+    check("T21 embedded message email remains a subject identity anchor",ids_from_deep(record)[0] == {"alice@example.com"})
+    check("T21 absent process booleans are unknown, not disabled/blocked", state_for_record(CAT_DATAFLOW,{}) == "UNKNOWN" and state_for_record(CAT_BACKUP,{}) == "UNKNOWN")
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

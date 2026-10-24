@@ -295,7 +295,9 @@ class CaseAudit:
                     until = record.attributes.get("retention_until") or record.attributes.get("retained_until") or record.attributes.get("hold_until")
                     if until and until < self.audit_at:
                         self.issues.append(f"{system}/{rid}: retention/hold expired at {until}; supplied conditional rule gives no default treatment.")
-            violated = st is not None and st not in compliant_states
+            if st == "UNKNOWN":
+                self.issues.append(f"{system}/{rid}: required state attributes are missing or unrecognized.")
+            violated = st not in (None, "UNKNOWN") and st not in compliant_states
             if st is None:
                 self.issues.append(f"{system}/{rid}: identity link has no admissible state evidence.")
             if violated and find_op is None:

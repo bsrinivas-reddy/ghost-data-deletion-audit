@@ -29,6 +29,8 @@ def _ids_from_record(rec, keys_email, keys_uid, keys_phone, keys_hash):
         if EMAIL_FULL.fullmatch(v): emails.add(v.lower())
         elif UID_FULL.fullmatch(v): uids.add(v)
         elif HASH_FULL.fullmatch(v): hashes.add(v)
+        if key in ("message_text", "message_excerpt", "body", "content", "notes"):
+            emails.update(e.lower() for e in EMAIL_FULL.findall(v))
     for k in keys_email:
         v = rec.get(k)
         if v:
@@ -186,7 +188,8 @@ def state_for_record(category, rec):
             return IDENTIFIABLE
         return ANONYMIZED
     if category == CAT_SUPPORT_MSG:
-        if has("requester_name", "requester_email", "requester_phone"):
+        content = " ".join(str(rec.get(k) or "") for k in ("message_text", "message_excerpt", "body", "content"))
+        if has("requester_name", "requester_email", "requester_phone") or EMAIL_FULL.search(content) or re.search(r"\+\d[\d ()-]{6,}\d", content):
             return IDENTIFIABLE
         return CLEAN
     if category == CAT_TOMBSTONE:
@@ -199,12 +202,14 @@ def state_for_record(category, rec):
         return CLEAN
     if category == CAT_DATAFLOW:
         en = rec.get("enabled")
-        if str(en) in ("1", "true", "True"): return ACTIVE
-        return DISABLED
+        if str(en).lower() in ("1", "true"): return ACTIVE
+        if str(en).lower() in ("0", "false"): return DISABLED
+        return "UNKNOWN"
     if category == CAT_BACKUP:
         ra = rec.get("restore_allowed")
-        if str(ra) in ("1", "true", "True"): return RISK
-        return BLOCKED
+        if str(ra).lower() in ("1", "true"): return RISK
+        if str(ra).lower() in ("0", "false"): return BLOCKED
+        return "UNKNOWN"
     if category in (CAT_SECURITY, CAT_LEGAL):
         return RETAINED
     return PRESENT
