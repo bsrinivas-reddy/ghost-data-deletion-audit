@@ -609,7 +609,7 @@ def t31(root):
 
 def t32(root):
     log = ('2026-09-04T09:00:00Z service=account_service trace_id=reused event=profile_lookup_started resource_id=account_1 lookup_key="alice@example.com"\n'
-           '2026-09-04T09:00:01Z service=account_service trace_id=reused event=profile_lookup_completed resource_id=account_2 rows=1 subject_reference="user_2"\n'
+           '2026-09-04T09:00:01Z service=account_service trace_id=reused event=profile_lookup_completed resource_id=account_2 rows=1\n'
            '2026-09-04T09:00:02Z service=account_service trace_id=reused event=profile_lookup_started resource_id=account_3 lookup_key="alice@example.com"\n'
            '2026-09-04T09:00:03Z service=account_service trace_id=reused event=profile_lookup_completed resource_id=account_3 rows=0 http_status=404\n')
     write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n"
@@ -619,7 +619,7 @@ def t32(root):
     a_status,alice = run(w,case("cA","alice@example.com")); b_status,bob = run(w,case("cB","bob@example.com"))
     check("T32 conflicting pair cannot import other resource identity", a_status == "COMPLETE" and
           {x["resource_id"] for x in alice} == {"account_3"} and alice[0]["operation"] == "VERIFY_RECORD_ABSENT" and
-          b_status == "INCOMPLETE" and {x["resource_id"] for x in bob} == {"account_2"})
+          b_status == "INCOMPLETE" and not bob)
 
 
 def main():
