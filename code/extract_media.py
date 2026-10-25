@@ -158,10 +158,10 @@ def parse_records(text, source_ext=""):
             values = [re.sub(r"^\s*Detail\s+", "", row, flags=re.I).strip() for row in request_sections[rid].splitlines()]
             seg = "\n".join(value for value in values if EMAIL_RE.fullmatch(value) or UID_RE.fullmatch(value) or PHONE_RE.fullmatch(value) or HASH_RE.fullmatch(value))
         elif li in history_lines:
-            seg = ""
-            state_seg = ""
+            continue
         if single and rid not in detail_sections:
-            state_seg = text
+            end = next((i for i, line in enumerate(lines) if stop_heading.match(line)), len(lines))
+            state_seg = "\n".join(lines[:end])
         r = records.setdefault(rid, {
             "resource_id": rid, "system_id": system_for(rid),
             "category": "", "state": None,

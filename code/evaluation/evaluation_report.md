@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-298 checks pass across the custom fixtures in `custom_tests.py`:
+303 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -546,3 +546,17 @@ metrics remain unchanged: 29/32 statuses, 153/197 exact steps, 7/32 sequences,
 remain unresolved. The separate vision extraction helper has six offline API-contract tests;
 one source-reviewed live experiment was performed
 and is reported separately in usage_report.md, not counted as final inference.
+
+
+## Current media state excludes explicit history, 25 October 2026
+
+A single resource previously inherited state words from the whole page,
+including Activity/History. A generic counterexample with a currently present
+search resource and a historical deletion could therefore certify absence.
+State inference now stops at explicit section boundaries, and history-only
+resource mentions produce no observation. An explicit Raw document panel
+restores current scope after history. T55 tests parser and real-reader audit
+behavior. The base fails the absence, history-only and false-COMPLETE checks.
+303 custom,22 offline model-path and6 extraction-helper checks pass. All518
+output rows and prior sample metrics remain byte-identical to be0a51a.
+This does not solve unknown OCR layouts or all natural-language state ambiguity.

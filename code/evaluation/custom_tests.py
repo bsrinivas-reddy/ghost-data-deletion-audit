@@ -1000,7 +1000,7 @@ def t54(root):
     rows=parse_records("search_82 alice@example.com\n\nOther owner bob@example.com")
     check("T54 a single recognized resource does not own the whole document",rows[0]["emails"]==["alice@example.com"])
     rows=parse_records("search_81 alice@example.com\nActivity\nsearch_82 bob@example.com")
-    check("T54 same-line activity is not subject ownership",next(r for r in rows if r["resource_id"]=="search_82")["emails"]==[])
+    check("T54 same-line activity is not subject ownership",not any(r["resource_id"]=="search_82" and r["emails"] for r in rows))
     write_fixture(root,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n"
                   "user_9,Decoy D,decoy@example.com,,,2026-01-01T00:00:00Z\n","",
                   "evidence_1,image.png,console,2026-09-04T00:00:00Z\n",{})
@@ -1013,9 +1013,27 @@ def t54(root):
     decoy=CaseAudit(world,case("cD","decoy@example.com"));_,steps=decoy.run()
     check("T54 unrelated activity cannot authorize decoy remediation",not steps)
 
+def t55(root):
+    from extract_media import parse_records
+    text = "search_81 alice@example.com PRESENT\nActivity\nsearch_81 deleted last month\n"
+    rows=parse_records(text)
+    check("T55 past deletion cannot certify current absence",rows[0]["state"]=="PRESENT")
+    check("T55 history-only resource has no current observation",not parse_records("History\nsearch_81 alice@example.com deleted"))
+    check("T55 current absence proof remains valid",parse_records("search_81 alice@example.com 404\nActivity\nsearch_81 PRESENT")[0]["state"]=="ABSENT")
+    rows=parse_records("History\nsearch_81 bob@example.com deleted\nRaw document - search_81\nemail alice@example.com\nstatus PRESENT")
+    check("T55 explicit raw panel restores current subject scope",rows[0]["state"]=="PRESENT" and rows[0]["emails"]==["alice@example.com"])
+    write_fixture(root,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n","",
+                  "evidence_1,image.png,console,2026-09-04T00:00:00Z\n",{})
+    cache=os.path.join(root,"cache");os.makedirs(cache)
+    with open(os.path.join(cache,"evidence_1.json"),"w") as f:json.dump({"text":text},f)
+    audit=CaseAudit(World(root,extracted_dir=cache),case("cA","alice@example.com"));status,steps=audit.run()
+    check("T55 past activity cannot create false COMPLETE",status=="INCOMPLETE" and
+          any(x["operation"]=="REPORT_REMAINING_RECORD" for x in steps))
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48, t49, t50, t51, t52, t53, t54):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48, t49, t50, t51, t52, t53, t54, t55):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)
