@@ -11,8 +11,7 @@ The prediction run uses Python rules, SQLite parsing, local Tesseract OCR and
 pdftotext, not a hosted model. These are execution usage totals, not a claim
 that no AI coding assistance was used during development. Development
 assistant token counts are not available as a verified aggregate and are not
-invented or included in the execution totals. Muse review is separate and
-pending; its usage totals are not available.
+invented or included in the execution totals. Muse development reviews are separate; their usage totals are not available.
 
 ## Optional model path
 
@@ -29,6 +28,24 @@ regenerated. No key was used and the live Gemini API path has not been verified.
 No paid calls are authorized; a free-looking key is not proof of zero-cost quota.
 The account owner must confirm their project tier and limits before any call.
 
-Mock pipeline tests pass 6/6. Mock tokens are synthetic, explicitly labeled,
+Offline pipeline tests pass 22/22. Mock tokens are synthetic, explicitly labeled,
 and excluded from real usage and cost. No mock call is reported as a real model
 call. No credentials or API keys are included.
+
+## Optional verification safety follow-up
+
+No real call was made for this follow-up. Empty/whitespace replies become
+UNPARSED rather than aborting the batch. Plans over6000 serialized characters
+are SKIPPED_OVERSIZE without sending partial JSON. Explicit zero, negative,
+boolean or noninteger limits are rejected before reading the input. Omit the
+limit to retain the manual verifier's previous all-rows mode. CLI counts skip
+annotations separately from actually reviewed cases. The prediction CSV is
+never rewritten by this helper. Missing keys still skip real calls.
+
+The optional adapter still defaults to gemini-2.5-flash. Current provider docs
+limit2.5 access to prior active users; a new project must check availability.
+A current free-tier candidate is gemini-3.5-flash-lite, but no project-specific
+free access or key was verified here. No model was silently switched on, and
+nothing in this safety follow-up establishes challenge eligibility. Provider
+free-service terms permit prompt/response use for product improvement and
+human review; no private data should be sent.

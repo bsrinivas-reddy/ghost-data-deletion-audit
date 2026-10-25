@@ -448,3 +448,16 @@ field semantics, so those cases are not silently reinterpreted here. Bare2xx
 (including204/206) are accepted; reason phrases/padded codes are UNKNOWN. These
 are parser status rules, not a claim that every remote HTTP2xx proves complete
 business semantics outside the supplied read format.
+
+## Optional verifier safety (offline)
+
+Reproduced empty-response IndexError, oversized-plan partial JSON submission
+and explicit zero-limit unlimited review. The helper now marks empty responses
+UNPARSED, skips oversized plans without a call and rejects invalid explicit
+limits. Muse confirmed these defects and identified missing boundary/consumer
+tests; those were added, along with a CLI fix that excludes skipped plans from
+reviewed counts. All210 custom and22 offline model-path checks pass. Individual
+mutations of size/limit guards, bool/type clauses, exact6000 boundary and CLI
+skip count fail their tests. No real model calls, key requests or paid usage
+were made. Full prediction output is byte-identical to ca008a5. This is not a
+runtime AI integration or eligibility claim.

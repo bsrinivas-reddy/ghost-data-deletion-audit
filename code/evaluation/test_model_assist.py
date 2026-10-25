@@ -44,6 +44,70 @@ def main():
     u = m.summarize_usage(m.USAGE_LOG)
     checks.append(("gemini without key skips and logs nothing real", u["total_calls"] == 0))
 
+    original_assist = m.assist
+    captured = []
+    def fake_assist(task, text, **kwargs):
+        captured.append(kwargs)
+        return ""
+    m.assist = fake_assist
+    try:
+        vs = m.run_verification(out_csv, "mock", limit=1)
+        checks.append(("empty verification response is unparsed", vs[0]["verdict"] == "UNPARSED"))
+        import csv
+        large = [{"detail":"x" * 6500}]
+        with open(out_csv, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["case_id","deletion_status","steps_json"])
+            w.writeheader(); w.writerow({"case_id":"case_large","deletion_status":"INCOMPLETE","steps_json":json.dumps(large)})
+        captured.clear()
+        vs = m.run_verification(out_csv, "mock", limit=1)
+        checks.append(("oversized plan is skipped without partial JSON disclosure", not captured and vs[0]["verdict"] == "SKIPPED_OVERSIZE"))
+        captured.clear()
+        try:
+            m.run_verification(out_csv, "mock", limit=0)
+        except ValueError:
+            checks.append(("zero call limit is rejected before any call", not captured))
+        else:
+            checks.append(("zero call limit is rejected before any call", False))
+        for invalid in (True, False, -1, 2.5, "2"):
+            try:
+                m.run_verification("nonexistent-input.csv", "mock", limit=invalid)
+            except ValueError:
+                checks.append((f"invalid limit rejected before file read {invalid!r}", True))
+            else:
+                checks.append((f"invalid limit rejected before file read {invalid!r}", False))
+        for size in (6000,6001):
+            plan=[{"detail":""}]
+            plan[0]["detail"]="x" * (size-len(json.dumps(plan)))
+            with open(out_csv,"w",newline="") as f:
+                w=csv.DictWriter(f,fieldnames=["case_id","deletion_status","steps_json"])
+                w.writeheader();w.writerow({"case_id":"boundary","deletion_status":"INCOMPLETE","steps_json":json.dumps(plan)})
+            captured.clear()
+            vs=m.run_verification(out_csv,"mock",limit=1)
+            checks.append((f"exact plan size boundary {size}",bool(captured) == (size==6000) and
+                           vs[0]["verdict"] == ("UNPARSED" if size==6000 else "SKIPPED_OVERSIZE") and
+                           vs[0]["status"] == "INCOMPLETE"))
+        with open(out_csv,"w",newline="") as f:
+            w=csv.DictWriter(f,fieldnames=["case_id","deletion_status","steps_json"])
+            w.writeheader();w.writerows({"case_id":f"case_{n}","deletion_status":"COMPLETE","steps_json":"[]"} for n in range(3))
+        for response,want in ((" \n ","UNPARSED"),("CONSISTENT","CONSISTENT"),("inconsistent","INCONSISTENT")):
+            m.assist=lambda *args,**kwargs:response
+            vs=m.run_verification(out_csv,"mock",limit=2)
+            checks.append((f"verification response control {want}",len(vs)==2 and all(x["verdict"]==want for x in vs)))
+        before=open(out_csv,"rb").read()
+        m.run_verification(out_csv,"mock",limit=None,out_path=os.path.join(tmp,"annotations.json"))
+        checks.append(("advisory output preserves prediction bytes",open(out_csv,"rb").read()==before))
+    finally:
+        m.assist = original_assist
+
+    import subprocess
+    cli=subprocess.run([sys.executable,m.__file__,"verify",out_csv,"none","1"],capture_output=True,text=True)
+    checks.append(("disabled CLI reports no reviewed cases",cli.returncode==0 and "0 cases reviewed | skipped: 0" in cli.stdout))
+    with open(out_csv,"w",newline="") as f:
+        w=csv.DictWriter(f,fieldnames=["case_id","deletion_status","steps_json"])
+        w.writeheader();w.writerow({"case_id":"large","deletion_status":"COMPLETE","steps_json":json.dumps([{"detail":"x"*6500}])})
+    cli=subprocess.run([sys.executable,m.__file__,"verify",out_csv,"none","1"],capture_output=True,text=True)
+    checks.append(("CLI does not count skipped plan as reviewed",cli.returncode==0 and "0 cases reviewed | skipped: 1" in cli.stdout))
+
     bad = 0
     for name, ok in checks:
         print(("PASS" if ok else "FAIL"), name)

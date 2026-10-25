@@ -122,19 +122,25 @@ def run_verification(output_csv, backend, limit=None, out_path=None):
     """Model review pass over an existing output.csv. Advisory only:
     writes annotations, never modifies the audited output."""
     import csv as _csv
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0):
+        raise ValueError("verification limit must be a positive integer")
     rows = list(_csv.DictReader(open(output_csv)))
-    if limit:
+    if limit is not None:
         rows = rows[:limit]
     verdicts = []
     for r in rows:
         steps = json.dumps(json.loads(r["steps_json"]), indent=None)
+        if len(steps) > 6000:
+            verdicts.append({"case_id":r["case_id"], "status":r["deletion_status"],
+                             "verdict":"SKIPPED_OVERSIZE", "detail":"Complete plan exceeds 6000 characters; no model call made."})
+            continue
         brief = ""
         ans = assist("verify", brief, backend=backend,
                      case_id=r["case_id"], status=r["deletion_status"],
-                     steps=steps[:6000])
+                     steps=steps)
         if ans is None:
             continue
-        first = ans.strip().splitlines()[0].strip().upper()
+        first = ans.strip().splitlines()[0].strip().upper() if ans.strip() else ""
         verdicts.append({"case_id": r["case_id"],
                          "status": r["deletion_status"],
                          "verdict": first if first in ("CONSISTENT", "INCONSISTENT") else "UNPARSED",
@@ -173,7 +179,8 @@ if __name__ == "__main__":
         backend = sys.argv[3] if len(sys.argv) > 3 else "none"
         limit = int(sys.argv[4]) if len(sys.argv) > 4 else None
         vs = run_verification(sys.argv[2], backend, limit)
-        print(f"{len(vs)} cases reviewed",
+        reviewed = sum(v["verdict"] != "SKIPPED_OVERSIZE" for v in vs)
+        print(f"{reviewed} cases reviewed", "| skipped:", len(vs)-reviewed,
               "| inconsistent:", sum(1 for v in vs if v["verdict"] == "INCONSISTENT"))
     else:
         backend = sys.argv[2] if len(sys.argv) > 2 else "none"
