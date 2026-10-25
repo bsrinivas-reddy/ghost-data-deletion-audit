@@ -24,8 +24,8 @@ Verification annotations do not rewrite prediction rows.
 Real Gemini calls read GEMINI_API_KEY from the environment and log API-returned
 input/output token counts to `code/usage_log.jsonl`. `summarize_usage()` groups
 these by model and excludes mock entries. Markdown totals are not automatically
-regenerated. At the original checkpoint no key was used and the live Gemini path was
-unverified; separate later tests are recorded below.
+regenerated. At the original checkpoint the live Gemini path was unverified; separate
+later tests are recorded below.
 No paid calls are authorized; a free-looking key is not proof of zero-cost quota.
 The account owner must confirm their project tier and limits before any call.
 
@@ -45,26 +45,24 @@ never rewritten by this helper. Missing keys still skip real calls.
 
 The optional adapter still defaults to gemini-2.5-flash. Current provider docs
 limit2.5 access to prior active users; a new project must check availability.
-A current free-tier candidate is gemini-3.5-flash-lite, but no project-specific
-free access or key was verified here. No model was silently switched on, and
+A current free-tier candidate is gemini-3.5-flash-lite, with access not verified during that earlier follow-up. No model was silently switched on, and
 nothing in this safety follow-up establishes challenge eligibility. Provider
 free-service terms permit prompt/response use for product improvement and
 human review; no private data should be sent.
 
 ## Separate synthetic connectivity test, 25 October 2026
 
-After the owner confirmed a free-tier Google key and explicitly approved one
+After free-tier confirmation and explicit approval of one
 synthetic sentence, a single request to gemini-3.5-flash-lite succeeded. The
 payload was only "Please delete my account and all my personal data". It
 returned explanatory text, not a project classification. Provider counts were
 9 input tokens and 252 candidate-output tokens, 261 reported tokens total.
 No dataset, names, private chat or media was sent. No billing or paid fallback
 was enabled. Current provider pricing lists free input/output for this model
-on the Free Tier; the owner confirmed that tier, but no independent project
-billing dashboard was inspected. This test is separate from the final
+on the Free Tier; the reported charge assumes that tier. This test is separate from the final
 518-request prediction run, whose hosted-model usage remains zero.
 
-The earlier no-key/no-live-test statements describe the prior checkpoint.
+The earlier no-live-test statements describe the prior checkpoint.
 The existing optional adapter default remains gemini-2.5-flash; the smoke test
 selected gemini-3.5-flash-lite explicitly. Neither a connection test nor Muse
 development reviews establish runtime AI participation in the final output or
@@ -89,8 +87,8 @@ AI-powered eligibility, and its tokens are not counted in the zero-call
 Across these two separate real experiments: 2 calls, 1,260 input tokens,
 497 candidate-output tokens, 1,757 provider-reported tokens. Both used the
 owner-confirmed Free Tier and a model whose official pricing lists free input
-and output. Estimated API charge is $0.00 under that tier; no billing dashboard
-or invoice was inspected, no billing setting changed, and no paid fallback ran.
+and output. Estimated API charge is $0.00 under that tier, not an independently verified
+invoice amount. No paid fallback ran.
 The exact source-to-cache extraction function was offline-mocked after the
 approved live image request; the live request used the same prompt/schema/API
 payload shape, not an earlier claim that the finished CLI had already run live.

@@ -183,8 +183,8 @@ These sources do not establish a globally best architecture or competition rank.
 
 ## Independent review follow-through
 
-Muse's saved review was recovered on 2026-10-25 after the original browser
-session ended. No raw development trace or unrelated history is bundled.
+Muse's earlier review was checked on 2026-10-25. No raw development trace or
+unrelated history is bundled.
 The review is evidence about the old code, not approval of the current code.
 Search exports with hits.total/documents and no result label were wrongly
 classified ABSENT. The parser now honors explicit hit payloads; an unrecognized
