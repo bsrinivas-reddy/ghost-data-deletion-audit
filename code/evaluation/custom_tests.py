@@ -677,9 +677,25 @@ def t35(root):
               any(x["resource_id"] == "support_1" and x["operation"] == "REDACT_RECORD" for x in steps))
 
 
+def t36(root):
+    from dataclasses import replace
+    from audit.model import Observation, CAT_SUPPORT_MSG, CAT_SUPPORT_ATT, CAT_PROFILE, CAT_SECONDARY, IDENTIFIABLE, PRESENT
+    write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "", "", {})
+    message=Observation("message","evidence","2026-09-04T00:00:00Z","2026-09-04T00:00:00Z","support_platform","support_1",CAT_SUPPORT_MSG,IDENTIFIABLE,user_ids=frozenset({"user_1"}))
+    scenarios=[([replace(message,category=CAT_PROFILE,state=PRESENT),replace(message,category=CAT_SECONDARY,state=PRESENT)],False),
+               ([message,replace(message,category=CAT_SUPPORT_ATT,state=PRESENT,claim=True,source_kind="activity")],False),
+               ([message,replace(message,category=CAT_SUPPORT_ATT,state=PRESENT),replace(message,resource_id="support_2")],True)]
+    for i,(obs,conflict) in enumerate(scenarios):
+        w=World(root);w.obs=[o for o in obs if not o.claim];w.claims=[o for o in obs if o.claim]
+        a=CaseAudit(w,case("cA","alice@example.com"));status,steps=a.run()
+        check(f"T36 treatment conflict scope {i}",status == "INCOMPLETE" and
+              any("conflicting policy categories" in x for x in a.issues) == conflict and
+              any(x["phase"] == "REMEDIATION" and x["resource_id"] == ("support_2" if conflict else "support_1") for x in steps))
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-104 checks pass across the custom fixtures in `custom_tests.py`:
+107 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -295,3 +295,19 @@ its supported account finding. Status counts stay unchanged, step count falls
 to 2,620, and the validator still reports only case_63. This deliberately leaves
 an incomplete remediation plan rather than inventing destructive treatment.
 The public checkpoint remains unchanged pending independent review.
+
+## Category-conflict review follow-through (still isolated)
+
+Muse's code review identified two over-triggers: claims counted as state
+categories, and different categories with equivalent operations conflicted.
+The experiment now compares distinct operation tuples from non-claim/non-BIND
+evidence. T36 checks same-treatment categories, claim disagreement and an
+unrelated resource in the same case. Sequential category changes remain
+uncertain without evidence of reclassification rather than coexisting records.
+
+A direct pixel inspection of account_admin_console_20260926.png showed that
+support_9538 is a customer-details ticket reference and activity label, not
+visible message content. The media extractor currently infers message category
+and PRESENT from that resource prefix. This provenance issue must be resolved
+before interpreting the case_34 conflict as two authoritative state categories.
+No category experiment has been promoted as of this checkpoint.

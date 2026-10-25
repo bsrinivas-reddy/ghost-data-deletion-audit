@@ -280,8 +280,9 @@ class CaseAudit:
         findings, remediations = [], []
         verifications = []
         for (system, rid), info in resources.items():
-            categories = {o.category for o in info["obs"] if o.category in COMPLIANT and o.state != BIND}
-            if len(categories) > 1:
+            categories = {o.category for o in info["obs"] if not o.claim and o.category in COMPLIANT and o.state != BIND}
+            treatments = {tuple(COMPLIANT[c][1:]) for c in categories}
+            if len(treatments) > 1:
                 self.issues.append(f"{system}/{rid}: conflicting policy categories {', '.join(sorted(categories))}; output address cannot distinguish their treatment.")
                 continue
             cat = info["category"]
