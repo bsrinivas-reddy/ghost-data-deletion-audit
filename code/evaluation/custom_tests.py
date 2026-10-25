@@ -59,7 +59,7 @@ def export_json(accounts_404=(), profiles=(), audit_records=(), tickets=(),
     if accounts_404 or profiles:
         se["account_service"] = {"profile_lookups": [
             {"resource_id": r, "observed_at": captured,
-             **({"profile": p} if p else {})} for r, p in
+             **({"profile": p, "status_code":200} if p else {"profile":None,"status_code":404})} for r, p in
             [(r, None) for r in accounts_404] + list(profiles)]}
     if audit_records:
         se["security_service"] = {"audit_records": audit_records}
@@ -782,9 +782,19 @@ def t43(root):
         check(f"T43 damaged time header requires timestamped rows {count}",r["state"] == ("PRESENT" if count == 2 else "BIND"))
 
 
+def t44(root):
+    from audit.parsers import _parse_json_data
+    for i,(extra,state) in enumerate((({},"UNKNOWN"),({"profile":None,"status_code":500},"UNKNOWN"),
+                                      ({"profile":None,"status_code":404},"ABSENT"),
+                                      ({"profile":{"email":"alice@example.com"},"status_code":200},"PRESENT"))):
+        obs,_=_parse_json_data({"service_exports":{"account_service":{"profile_lookups":[{"resource_id":"account_1",**extra}]}}},
+                               "evidence_1","2026-09-04T00:00:00Z")
+        check(f"T44 missing profile is not a successful absence lookup {i}",len(obs) == 1 and obs[0].state == state)
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

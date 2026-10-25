@@ -317,7 +317,7 @@ def _parse_json_data(d, file_id, captured_at):
             t = lookup.get("observed_at", captured_at)
             if prof is None:
                 obs.append(Observation(file_id, "evidence", captured_at, t,
-                    "account_service", rid, CAT_PROFILE, ABSENT))
+                    "account_service", rid, CAT_PROFILE, ABSENT if str(lookup.get("status_code")) == "404" else "UNKNOWN"))
             else:
                 em, ui, ph, ha = ids_from_deep(prof)
                 obs.append(Observation(file_id, "evidence", captured_at, t,

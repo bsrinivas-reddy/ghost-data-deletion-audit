@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-127 checks pass across the custom fixtures in `custom_tests.py`:
+131 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -389,3 +389,13 @@ headers, multiple-ticket views, OCR toolchain freshness and unstructured names
 or phone formats. The last independent review's concrete overclaims have
 counterexamples and corrections; the timestamp-row fallback received local
 code review and mutation testing, not another independent review verdict.
+
+## Account lookup error isolation (local follow-up)
+
+A JSON account lookup without a profile payload, including a null profile with
+status_code 500, was treated as ABSENT. The parser now requires status_code 404
+before a null/missing profile proves absence; other such payloads are UNKNOWN.
+All 47 corpus account-export lookups supply profile and status_code fields, so
+the full output is unchanged. The fixture helper now emits this actual source
+shape. T44's missing/error checks fail before the fix; explicit 404 and present
+profile controls remain valid. This local follow-up is pending final review.
