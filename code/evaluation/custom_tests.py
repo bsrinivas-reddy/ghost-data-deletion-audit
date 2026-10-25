@@ -647,9 +647,39 @@ def t33(root):
               "lookup_key" not in obs[0].attributes and obs[0].attributes["resource_id"] == "account_2")
 
 
+def t34(root):
+    from audit.model import Observation, CAT_SUPPORT_MSG, CAT_SUPPORT_ATT, IDENTIFIABLE, PRESENT
+    write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "", "", {})
+    w = World(root)
+    w.obs = [Observation("message","evidence","2026-09-04T00:00:00Z","2026-09-04T00:00:00Z",
+                         "support_platform","support_1",CAT_SUPPORT_MSG,IDENTIFIABLE,user_ids=frozenset({"user_1"}),store_id="primary"),
+             Observation("attachment","evidence","2026-09-05T00:00:00Z","2026-09-05T00:00:00Z",
+                         "support_platform","support_1",CAT_SUPPORT_ATT,PRESENT,user_ids=frozenset({"user_1"}))]
+    a=CaseAudit(w,case("cA","alice@example.com")); status,steps=a.run()
+    check("T34 conflicting category address does not invent destructive policy", status == "INCOMPLETE" and
+          any("conflicting policy categories" in msg for msg in a.issues) and not steps)
+
+
+def t35(root):
+    from dataclasses import replace
+    from audit.model import Observation, CAT_SUPPORT_MSG, CAT_SUPPORT_ATT, IDENTIFIABLE, PRESENT
+    write_fixture(root,"user_1,Alice A,alice@example.com,+1 555 000 0001,,2026-01-01T00:00:00Z\n", "", "", {})
+    message = Observation("message","evidence","2026-09-04T00:00:00Z","2026-09-04T00:00:00Z",
+                          "support_platform","support_1",CAT_SUPPORT_MSG,IDENTIFIABLE,user_ids=frozenset({"user_1"}))
+    variants = [(replace(message,evidence_id="later",obs_time="2026-09-05T00:00:00Z"),False),
+                (replace(message,category=CAT_SUPPORT_ATT,state=PRESENT,captured_at="2026-10-01T00:00:00Z"),False),
+                (replace(message,category=CAT_SUPPORT_ATT,state=PRESENT,resource_id="support_2"),False)]
+    for i,(other,_) in enumerate(variants):
+        w=World(root);w.obs=[message,other]
+        a=CaseAudit(w,case("cA","alice@example.com"));status,steps=a.run()
+        check(f"T35 category conflict boundary {i}", status == "INCOMPLETE" and
+              not any("conflicting policy categories" in msg for msg in a.issues) and
+              any(x["resource_id"] == "support_1" and x["operation"] == "REDACT_RECORD" for x in steps))
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

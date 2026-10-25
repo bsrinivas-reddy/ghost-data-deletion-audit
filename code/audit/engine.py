@@ -280,6 +280,10 @@ class CaseAudit:
         findings, remediations = [], []
         verifications = []
         for (system, rid), info in resources.items():
+            categories = {o.category for o in info["obs"] if o.category in COMPLIANT and o.state != BIND}
+            if len(categories) > 1:
+                self.issues.append(f"{system}/{rid}: conflicting policy categories {', '.join(sorted(categories))}; output address cannot distinguish their treatment.")
+                continue
             cat = info["category"]
             if cat not in COMPLIANT:
                 self.issues.append(f"{system}/{rid}: unsupported evidence category {cat}.")

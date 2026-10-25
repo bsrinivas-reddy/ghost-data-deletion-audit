@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-100 checks pass across the custom fixtures in `custom_tests.py`:
+104 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -276,3 +276,22 @@ and 300 have no start ID. The zero explicit mismatches statistic applies to the
 this guard does not prove those 300 pairs correct. Raw ID comparison is kept,
 not separator/case normalization without evidence of equivalent identifiers.
 No overall-engine correctness approval follows from this bounded review.
+
+## Category-address conflict experiment (not promoted at this report checkpoint)
+
+The engine groups state by system_id/resource_id. Nine corpus addresses carry
+both SUPPORT_MESSAGE and SUPPORT_ATTACHMENT observations. After capture and
+audit gates, only case_34 has both categories admissible; its plan otherwise
+uses a later message label to shadow an attachment obligation. A synthetic
+retained-message plus attachment pair also produces a DELETE on an address
+that may refer to the retained message. The output schema has no category or
+component field, and the supplied policy has no precedence rule for this clash.
+
+The isolated experiment records conflicting policy categories as uncertainty
+and emits no guessed treatment for that address. T34 fails without this guard;
+T35 covers same-category, later-captured and different-address controls. Current
+experiment changes only case_34, removing three support_9538 steps while keeping
+its supported account finding. Status counts stay unchanged, step count falls
+to 2,620, and the validator still reports only case_63. This deliberately leaves
+an incomplete remediation plan rather than inventing destructive treatment.
+The public checkpoint remains unchanged pending independent review.
