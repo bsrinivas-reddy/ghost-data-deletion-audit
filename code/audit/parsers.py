@@ -343,7 +343,7 @@ def _parse_json_data(d, file_id, captured_at):
             t = e.get("observed_at", captured_at)
             em, ui, ph, ha = ids_from_deep(e)
             present = e.get("download_available", True)
-            st = PRESENT if present else ABSENT
+            st = PRESENT if present is True else ABSENT if present is False else "UNKNOWN"
             obs.append(Observation(file_id, "evidence", captured_at, t,
                 "export_service", e["resource_id"], CAT_EXPORT, st,
                 frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha), attributes=e))

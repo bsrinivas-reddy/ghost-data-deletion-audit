@@ -483,3 +483,23 @@ nested role-prefix shape; this is synthetic hardening, not a newly observed
 corpus correction. Uppercase, hyphenated/plural keys, generic role-value fields
 and actor mentions inside unstructured body/media text remain outside this
 key-based scope. No perfect ownership-resolution claim is made.
+
+## Typed export availability boundary
+
+The service-export parser used truthiness for download_available, turning
+explicit null/zero/empty into absence proof. Only actual JSON booleans now map
+to PRESENT/ABSENT; other explicit values become UNKNOWN. Missing flags retain
+the existing PRESENT default. All9 corpus export entries omit this flag, so
+predictions are unchanged. This is synthetic hardening, not a corpus defect.
+
+T52 tests missing/null/boolean/empty/string/numeric boundaries and a nonvacuous
+engine verdict for an identity-linked unknown export.258 custom and22 offline
+checks pass. True-equality and False-equality mutations fail2 and1 checks.
+Muse's required true-side numeric controls were added. The log sibling already
+uses textual flags and does not have this truthiness path.
+
+The preexisting explicit False-to-ABSENT premise is preserved, not independently
+proved: download unavailability can differ from object deletion in other
+systems. No supplied export uses the flag, so no invented producer rule is
+used to expand this fix. UNKNOWN can replace an actionable plan with uncertainty;
+that remains preferable to invented proof. Runtime model calls remain zero.

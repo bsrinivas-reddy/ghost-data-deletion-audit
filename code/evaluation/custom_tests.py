@@ -926,9 +926,27 @@ def t51(root):
         check(f"T51 deeper role reference excluded {role}",refs_from(rec)=={"account_1"})
 
 
+def t52(root):
+    from audit.parsers import _parse_json_data
+    variants=[({"download_available":False},"ABSENT"),({"download_available":True},"PRESENT"),
+              ({"download_available":None},"UNKNOWN"),({"download_available":0},"UNKNOWN"),
+              ({"download_available":""},"UNKNOWN"),({"download_available":"false"},"UNKNOWN"),({"download_available":1},"UNKNOWN"),
+              ({"download_available":1.0},"UNKNOWN"),({},"PRESENT")]
+    for extra,state in variants:
+        obs,_=_parse_json_data({"service_exports":{"export_service":{"exports":[{"resource_id":"export_1","email":"alice@example.com",**extra}]}}},"evidence_1","2026-09-05T00:00:00Z")
+        check(f"T52 synthetic export availability {extra}",len(obs)==1 and obs[0].state==state)
+    payload=json.dumps({"service_exports":{"export_service":{"exports":[{"resource_id":"export_1","email":"alice@example.com","download_available":None}]}}})
+    write_fixture(root,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n","",
+                  "evidence_1,evidence/export.json,service_resource_export,2026-09-05T00:00:00Z\n",{"evidence/export.json":payload})
+    audit=CaseAudit(World(root),case("cA","alice@example.com"));status,steps=audit.run()
+    check("T52 synthetic unavailable export flag cannot certify deletion",status=="INCOMPLETE" and audit.issues and
+          any(x["phase"]=="VERIFICATION" and x["resource_id"]=="export_1" for x in steps) and
+          not any(x["phase"] in ("FINDING","REMEDIATION") for x in steps))
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48, t49, t50, t51):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48, t49, t50, t51, t52):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)
