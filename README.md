@@ -53,8 +53,9 @@ structure and citation cutoffs, not complete semantic correctness.
 ## Model usage
 
 The shipped prediction run uses zero model calls and costs $0.00. AI-powered
-eligibility is not established by that fact. Optional Gemini paths exist but
-have not been live-tested; they require owner-confirmed free quota before use.
+eligibility is not established by that fact. A separate synthetic connection test and one reviewed image extraction have
+been live-tested; neither is counted as final-dataset inference. Optional
+calls require owner-confirmed free quota and source-disclosure approval.
 Intent assistance can affect an UNKNOWN request's classification. Verification
 review is advisory. Actual returned tokens go to `code/usage_log.jsonl`; mock
 entries are excluded from real totals. No automatic Markdown report generation
@@ -64,7 +65,7 @@ is claimed.
 
 ```sh
 zip -r code.zip README.md code \
-  -x '*/__pycache__/*' '*/extracted/*' '*/usage_log.jsonl' '*/.venv/*' '*/venv/*'
+  -x '*/__pycache__/*' '*/extracted/*' '*/usage_log.jsonl' '*/model_evidence/*' '*/.venv/*' '*/venv/*'
 ```
 
 Upload code.zip, the generated output.csv, and the authentic root log.txt in
@@ -72,3 +73,34 @@ HackerRank's separate slots. The reports belong in `code/evaluation/` inside
 code.zip. Do not bundle dataset/, caches, credentials or nested archives.
 A reconstructed development summary is not represented as a complete per-turn
 session log; missing history must be disclosed, never invented.
+
+## Separate vision extraction experiment
+
+The default full run is deterministic and makes no hosted-model calls. One
+approved experiment used Gemini 3.5 Flash-Lite on a participant connector
+screenshot. Pixel inspection confirmed two correct resource/selector pairs;
+the model also returned two descriptive row names as IDs. This does not
+establish better sample accuracy or confirmed challenge eligibility.
+
+To reproduce an extraction, confirm your Google project is on the free tier
+and approve the selected image's disclosure under Google's free-service
+terms. Set GEMINI_API_KEY only in your environment, then explicitly select
+one PNG and a new output directory:
+
+```sh
+python3 code/vision_evidence.py dataset SELECTED_FILE_ID /tmp/vision-experiment
+python3 code/evaluation/test_vision_evidence.py
+```
+
+This command makes one request, with no retry or paid fallback, and writes
+model output plus source/prompt hashes and returned token metadata. It rejects
+an existing output file before making a request. It does not authenticate the
+model's factual claims, establish row ownership or make audit decisions.
+Inspect the actual image against every relationship before using the result
+in further research. Descriptive names, neighboring-row identity swaps and
+state mistakes can occur even when all tokens are visible in the image.
+
+The prediction engine does not load this output. Source-specific caches are
+gitignored and not shipped in code.zip. A clean prediction run needs no key
+or model cache. The experiment's token counts and limits are recorded
+separately in code/evaluation/usage_report.md, not as final-dataset usage.
