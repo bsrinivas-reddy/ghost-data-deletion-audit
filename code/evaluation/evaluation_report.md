@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-138 checks pass across the custom fixtures in `custom_tests.py`:
+298 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -523,3 +523,26 @@ so full predictions are unchanged. The actual false listing already used the
 records path and was PRESENT before and after. No hidden answers were used.
 Unknown downloadability can remove a plan in favor of uncertainty; it cannot
 prove deletion. This corrects the prior premise, not a new corpus accuracy claim.
+
+
+## Source-grounded media follow-up, 25 October 2026
+
+The search-console image contains a real detail panel, a neighboring result and
+unrelated activity. Earlier OCR missed space-separated resource IDs and the
+single-recognized-resource rule swept every identity from the page. The new
+parser removes whole-document identity inheritance, recognizes horizontal OCR
+separators, scopes labeled raw-document values and excludes recognized activity
+blocks. An explicitly headed PDF customer-request table can associate its exact
+Detail values with its unique stated reference without inheriting unrelated
+pages/products. Unsupported layouts can still lose recall, and arbitrary OCR
+heading corruption is not solved. Single-resource state inference remains a
+separate known heuristic, not a proof of full document semantics.
+
+298 custom checks pass at this follow-up, including real-reader subject/decoy
+plans and base-failing counterexamples for activity, label conflicts and scope.
+All 15 media sources were regenerated during testing. Full output and sample
+metrics remain unchanged: 29/32 statuses, 153/197 exact steps, 7/32 sequences,
+786/1214 aligned fields. Missing sample01/02/04 raw identity evidence and case63
+remain unresolved. The separate vision extraction helper has six offline API-contract tests;
+one source-reviewed live experiment was performed
+and is reported separately in usage_report.md, not counted as final inference.

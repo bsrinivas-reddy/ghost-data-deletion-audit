@@ -12,7 +12,7 @@ PREFIXES = ("account", "tombstone", "search", "cache", "support", "analytics",
             "telemetry", "data_flow", "backup", "audit_record", "export",
             "marketing", "object", "legal_hold", "email_log", "secondary")
 # OCR sometimes drops or substitutes the underscore before the digits
-RES_RE = re.compile(r"\b(" + "|".join(PREFIXES) + r")[_.\-]?(\d+)\b")
+RES_RE = re.compile(r"\b(" + "|".join(PREFIXES) + r")(?:[_.\-]|[ \t]+)?(\d+)\b")
 
 def _canon(m):
     return f"{m.group(1)}_{m.group(2)}"
@@ -82,18 +82,15 @@ def parse_records(text, source_ext=""):
     """One record per resource mention.
 
     Identity association policy (false-binding guard): identifiers on the
-    same line as a resource mention always attach. Identifiers from the
-    surrounding blank-line-delimited block attach only when the document
-    mentions a single resource - consoles listing several resources put
-    owner columns on separate lines, and block-level sweeps mis-bind them.
+    same line as a resource mention attach unless an explicit raw-document
+    panel supplies owner fields. That panel ends before activity history.
+    Other documents do not inherit identifiers from neighboring lines.
     """
     records = {}
     mentions = list(RES_RE.finditer(text))
     distinct = {_canon(m) for m in mentions}
-    # A document about a single resource: every identifier in it belongs to
-    # that resource (label/value layouts scatter them across blocks).
     single = len(distinct) <= 1
-    lines = text.splitlines()
+    lines = text.split("\n")
     # line index for each mention
     pos = 0
     line_starts = []
@@ -101,29 +98,89 @@ def parse_records(text, source_ext=""):
         line_starts.append(pos)
         pos += len(ln) + 1
     import bisect
-    def block_of(li):
-        lo = li
-        while lo > 0 and lines[lo - 1].strip():
-            lo -= 1
-        hi = li
-        while hi + 1 < len(lines) and lines[hi + 1].strip():
-            hi += 1
-        return "\n".join(lines[lo:hi + 1])
+    detail_sections = {}
+    stop_heading = re.compile(r"^\s*(?:Recent\s+)?(?:Activity(?: Log)?|History|Search history|Search results|Related(?: documents)?|Comments|Attachments|Summary)(?:\s*\(\d+\))?\s*:?\s*$", re.I)
+    heading = re.compile(r"^\s*Raw document\s*[-:]\s*(.+)$", re.I)
+    for i, line in enumerate(lines):
+        match = heading.match(line)
+        resources = list(RES_RE.finditer(match.group(1))) if match else []
+        resource = resources[0] if len(resources) == 1 else None
+        if not resource:
+            for ambiguous in resources:
+                detail_sections.setdefault(_canon(ambiguous), [])
+            continue
+        end = i + 1
+        while end < len(lines) and not (heading.match(lines[end]) or stop_heading.match(lines[end])):
+            end += 1
+        detail_sections.setdefault(_canon(resource), []).append("\n".join(lines[i + 1:end]))
+    request_sections = {}
+    if source_ext == ".pdf":
+        for i, line in enumerate(lines):
+            if line.strip().lower() != "customer request":
+                continue
+            section = []
+            for row in lines[i + 1:]:
+                if "\f" in row or re.match(r"^\s*(?:Product|Order and delivery details|Attachment properties)\b", row, re.I):
+                    break
+                section.append(row)
+            references = {_canon(m) for row in section if re.match(r"^\s*Detail\s+reference\b", row, re.I) for m in RES_RE.finditer(row)}
+            if len(references) == 1:
+                request_sections[next(iter(references))] = "\n".join(row for row in section if re.match(r"^\s*Detail\s+", row, re.I))
+    history = False
+    history_lines = set()
+    for i, line in enumerate(lines):
+        match = heading.match(line)
+        if match and len(list(RES_RE.finditer(match.group(1)))) == 1:
+            history = False
+        elif stop_heading.match(line):
+            history = True
+        if history:
+            history_lines.add(i)
     for m in mentions:
         rid = _canon(m)
         li = bisect.bisect_right(line_starts, m.start()) - 1
         seg = lines[li]
-        if single:
-            seg = text
+        state_seg = seg
+        if rid in detail_sections:
+            state_seg = "\n".join(detail_sections[rid])
+            labeled = []
+            for section in detail_sections[rid]:
+                for line in section.splitlines():
+                    field = re.fullmatch(r"\s*(e-?mail|customer[_ ]reference|user[_ ]id|phone|email_hash)\s*:?[ \t]+(.+?)\s*", line, re.I)
+                    if not field:
+                        continue
+                    key, value = field.group(1).lower().replace(" ", "_").replace("e-mail", "email"), field.group(2)
+                    pattern = EMAIL_RE if key == "email" else UID_RE if key in ("user_id", "customer_reference") else PHONE_RE if key == "phone" else HASH_RE
+                    if pattern.fullmatch(value):
+                        labeled.append((key, value))
+            seg = "\n".join(value for key, value in labeled if len({v for k, v in labeled if k == key}) == 1)
+        elif rid in request_sections:
+            values = [re.sub(r"^\s*Detail\s+", "", row, flags=re.I).strip() for row in request_sections[rid].splitlines()]
+            seg = "\n".join(value for value in values if EMAIL_RE.fullmatch(value) or UID_RE.fullmatch(value) or PHONE_RE.fullmatch(value) or HASH_RE.fullmatch(value))
+        elif li in history_lines:
+            seg = ""
+            state_seg = ""
+        if single and rid not in detail_sections:
+            state_seg = text
         r = records.setdefault(rid, {
             "resource_id": rid, "system_id": system_for(rid),
             "category": "", "state": None,
             "emails": set(), "user_ids": set(), "phones": set(), "hashes": set()})
+        if rid in detail_sections:
+            detail_emails = {e.lower() for e in EMAIL_RE.findall(seg)}
+            for other in mentions:
+                other_li = bisect.bisect_right(line_starts, other.start()) - 1
+                if _canon(other) != rid or other_li in history_lines or heading.match(lines[other_li]):
+                    continue
+                row_emails = {e.lower() for e in EMAIL_RE.findall(lines[other_li])}
+                if row_emails and row_emails != detail_emails:
+                    seg = ""
+                    break
         r["emails"] |= {e.lower() for e in EMAIL_RE.findall(seg)}
         r["user_ids"] |= set(UID_RE.findall(seg))
         r["phones"] |= {p.strip() for p in PHONE_RE.findall(seg)}
         r["hashes"] |= set(HASH_RE.findall(seg))
-        st = guess_state(rid, seg, text)
+        st = guess_state(rid, state_seg, text)
         if r["state"] in (None, "PRESENT") or st != "PRESENT":
             r["state"] = st
     out = []

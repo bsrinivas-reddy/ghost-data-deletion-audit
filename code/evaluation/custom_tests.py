@@ -960,9 +960,62 @@ def t53(root):
           any(x["phase"]=="VERIFICATION" and x["resource_id"]=="export_1" and not x["evidence_id"] for x in steps))
 
 
+
+def t54(root):
+    from extract_media import parse_records
+    text = ("search 81 Bob bob@example.com\nRaw document - search_82\n"
+            "email alice@example.com\ncustomer_reference user_1\n"
+            "display_name Mallory mallory@example.com\nActivity\n"
+            "email decoy@example.com\ncustomer_reference user_9\n")
+    records = {r["resource_id"]:r for r in parse_records(text,".png")}
+    check("T54 OCR horizontal separator discovers neighboring record",set(records)=={"search_81","search_82"})
+    check("T54 raw detail excludes table neighbor and activity identities",records["search_82"]["emails"]==["alice@example.com"] and records["search_82"]["user_ids"]==["user_1"])
+    check("T54 neighbor keeps only same-line owner",records.get("search_81",{}).get("emails")==["bob@example.com"] and not records.get("search_81",{}).get("user_ids"))
+    for separator in ("_",".","-",""," ","\t","   "):
+        check(f"T54 supported OCR separator {separator!r}",any(r["resource_id"]=="search_82" for r in parse_records(f"search{separator}82 alice@example.com")))
+    check("T54 newline does not join resource fragments",not parse_records("search\n82 alice@example.com"))
+    for boundary in ("Activity","Recent Activity","Activity (3)","History","Comments","Raw document - search_83"):
+        rows={r["resource_id"]:r for r in parse_records("Raw document - search_82\nemail alice@example.com\n"+boundary+"\nemail bob@example.com")}
+        check(f"T54 explicit detail boundary {boundary}",rows["search_82"]["emails"]==["alice@example.com"])
+    rows=parse_records("Raw document - search_82\nemail alice@example.com\nstatus 404\nActivity\n")
+    check("T54 detail state remains separate from identity labels",rows[0]["state"]=="ABSENT")
+    for label in ("email:","e-mail", "email"):
+        rows=parse_records("Raw document - search_82\n"+label+" alice@example.com\nuser id: user_1\nActivity:\nemail bob@example.com")
+        check(f"T54 colon and spaced owner fields {label}",rows[0]["emails"]==["alice@example.com"] and rows[0]["user_ids"]==["user_1"])
+    rows=parse_records("Raw document - search_82 search_83 alice@example.com\nemail bob@example.com")
+    check("T54 ambiguous panel heading never supplies ownership",not any(r["emails"] for r in rows))
+    rows=parse_records("Raw document - search_82\nemail alice@example.com actor_email bob@example.com\ncustomer_reference user_1 operator_user_id user_9")
+    check("T54 owner labels cannot sweep trailing staff values",not rows[0]["emails"] and not rows[0]["user_ids"])
+    rows=parse_records("search_82 bob@example.com\nRaw document - search_82\nemail alice@example.com")
+    check("T54 conflicting table and detail owners remain unbound",not rows[0]["emails"])
+    rows=parse_records("Raw document - search_82\nemail alice@example.com\nemail bob@example.com")
+    check("T54 conflicting labeled owners remain unbound",not rows[0]["emails"])
+    request="Support reference support_82\nCustomer request\n Detail reference support_82\n Detail alice@example.com\n Product item\n Detail decoy@example.com"
+    rows=parse_records(request,".pdf")
+    check("T54 explicit customer-request table owns exact detail values",rows[0]["emails"]==["alice@example.com"])
+    rows=parse_records(request.replace(" Product item", "\fOther page"),".pdf")
+    check("T54 customer request scope ends at PDF page boundary",rows[0]["emails"]==["alice@example.com"])
+    rows=parse_records(request.replace(" Detail reference support_82"," Detail reference support_82 support_83"),".pdf")
+    check("T54 multi-resource request table has no inherited owner",not any(r["emails"] for r in rows))
+    rows=parse_records("search_82 alice@example.com\n\nOther owner bob@example.com")
+    check("T54 a single recognized resource does not own the whole document",rows[0]["emails"]==["alice@example.com"])
+    rows=parse_records("search_81 alice@example.com\nActivity\nsearch_82 bob@example.com")
+    check("T54 same-line activity is not subject ownership",next(r for r in rows if r["resource_id"]=="search_82")["emails"]==[])
+    write_fixture(root,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n"
+                  "user_9,Decoy D,decoy@example.com,,,2026-01-01T00:00:00Z\n","",
+                  "evidence_1,image.png,console,2026-09-04T00:00:00Z\n",{})
+    cache=os.path.join(root,"cache");os.makedirs(cache)
+    with open(os.path.join(cache,"evidence_1.json"),"w") as f:json.dump({"text":text},f)
+    world=World(root,extracted_dir=cache)
+    subject=CaseAudit(world,case("cA","alice@example.com"));status,steps=subject.run()
+    check("T54 World preserves explicit subject remediation",status=="INCOMPLETE" and
+          {x["resource_id"] for x in steps}=={"search_82"} and any(x["operation"]=="DELETE_RECORD" for x in steps))
+    decoy=CaseAudit(world,case("cD","decoy@example.com"));_,steps=decoy.run()
+    check("T54 unrelated activity cannot authorize decoy remediation",not steps)
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48, t49, t50, t51, t52, t53):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48, t49, t50, t51, t52, t53, t54):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)
