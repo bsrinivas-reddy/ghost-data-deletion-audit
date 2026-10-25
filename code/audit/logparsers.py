@@ -96,7 +96,7 @@ def _state_from_attrs(cat, a):
 def _ids_from_attrs(a):
     em, ui, ph, ha = set(), set(), set(), set()
     for k, v in a.items():
-        if k.startswith(("agent_", "actor_", "assignee_", "operator_")):
+        if k in ("agent", "actor", "assignee", "operator") or k.startswith(("agent_", "actor_", "assignee_", "operator_")):
             continue
         if v in (None, "", "null"): continue
         if EMAIL_RE.fullmatch(v): em.add(v.lower())

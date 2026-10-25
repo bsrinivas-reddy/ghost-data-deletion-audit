@@ -461,3 +461,25 @@ mutations of size/limit guards, bool/type clauses, exact6000 boundary and CLI
 skip count fail their tests. No real model calls, key requests or paid usage
 were made. Full prediction output is byte-identical to ca008a5. This is not a
 runtime AI integration or eligibility claim.
+
+## Exact and nested role-attribution isolation
+
+Scalar exact role fields (actor,agent,assignee,operator), nested prefixed role
+objects and role-subtree source_resource_id links could contribute staff
+identities or resource references to customer membership. JSON scalar sweeps,
+nested recursion, reference walking and the log scalar sibling now apply the
+same lowercase exact/prefix boundary. State inference is not changed.
+
+T49-T51 cover root and deeper dict/list role objects, actual subject controls,
+exact scalars in both JSON and logs, reference binding and mixed subject/actor
+verdicts.248 custom and22 offline checks pass; full predictions are unchanged.
+Independent mutations fail6 outer-recursion,8 inner-recursion,4 JSON-scalar,
+4 log-scalar and11 reference checks. A root-only inner-mutation check initially
+had no failures; deeper container tests exposed that coverage gap and closed it.
+
+Muse's initial exact-scalar/reference findings were reproduced and corrected;
+its final review found no new defect in this scope. No supplied JSON has the
+nested role-prefix shape; this is synthetic hardening, not a newly observed
+corpus correction. Uppercase, hyphenated/plural keys, generic role-value fields
+and actor mentions inside unstructured body/media text remain outside this
+key-based scope. No perfect ownership-resolution claim is made.

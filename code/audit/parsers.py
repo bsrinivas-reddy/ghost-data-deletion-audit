@@ -22,7 +22,7 @@ def _ids_from_record(rec, keys_email, keys_uid, keys_phone, keys_hash):
     # correlation_key, matched_value, owner_key, subject_reference...), so
     # classify by value shape, not by key name
     for key, v in rec.items():
-        if key.startswith(("agent_", "actor_", "assignee_", "operator_")):
+        if key in ("agent", "actor", "assignee", "operator") or key.startswith(("agent_", "actor_", "assignee_", "operator_")):
             continue
         if not isinstance(v, str) or not v:
             continue
@@ -66,12 +66,12 @@ def ids_from_deep(rec):
             e2, u2, p2, h2 = ids_from(v)
             em.update(e2); ui.update(u2); ph.update(p2); ha.update(h2)
             for key, x in v.items():
-                if key not in ("agent", "actor", "assignee", "operator"):
+                if key not in ("agent", "actor", "assignee", "operator") and not key.startswith(("agent_", "actor_", "assignee_", "operator_")):
                     walk(x)
         elif isinstance(v, list):
             for x in v: walk(x)
     for key, v in rec.items():
-        if key not in ("agent", "actor", "assignee", "operator"):
+        if key not in ("agent", "actor", "assignee", "operator") and not key.startswith(("agent_", "actor_", "assignee_", "operator_")):
             walk(v)
     return frozenset(em), frozenset(ui), frozenset(ph), frozenset(ha)
 
@@ -115,6 +115,8 @@ def refs_from(rec):
     def walk(v):
         if isinstance(v, dict):
             for k, x in v.items():
+                if k in ("agent", "actor", "assignee", "operator") or k.startswith(("agent_", "actor_", "assignee_", "operator_")):
+                    continue
                 if (isinstance(x, str) and k != "resource_id"
                         and k.endswith("resource_id") and REF_RE.match(x)):
                     out.add(x)

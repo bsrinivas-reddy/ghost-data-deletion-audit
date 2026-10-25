@@ -873,9 +873,62 @@ def t48(root):
               obs[0].state == "UNKNOWN" and obs[0].user_ids == frozenset({"user_1"}))
 
 
+def t49(root):
+    from audit.parsers import ids_from_deep
+    for role in ("agent","actor","assignee","operator"):
+        for key in (role,role+"_context"):
+            rec={"email":"bob@example.com",key:{"email":"alice@example.com","user_id":"user_1"}}
+            em,ui,ph,ha=ids_from_deep(rec)
+            check(f"T49 synthetic nested role excluded {key}",em == frozenset({"bob@example.com"}) and not ui)
+    for role in ("agent_","actor_","assignee_","operator_"):
+        for container in (lambda x:{"customer":x},lambda x:{"records":[x]}):
+            rec=container({"email":"bob@example.com",role+"context":[{"email":"alice@example.com","user_id":"user_1"}]})
+            em,ui,ph,ha=ids_from_deep(rec)
+            check(f"T49 synthetic deeper role excluded {role} {list(rec)}",em == frozenset({"bob@example.com"}) and not ui)
+    em,ui,ph,ha=ids_from_deep({"customer":{"email":"alice@example.com","user_id":"user_1"}})
+    check("T49 nested subject remains usable",em == frozenset({"alice@example.com"}) and ui == frozenset({"user_1"}))
+    payload=export_json(profiles=[("account_2",{"actor_context":{"email":"alice@example.com"}})])
+    write_fixture(root,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n","",
+                  "evidence_1,evidence/profile.json,service_resource_export,2026-09-05T00:00:00Z\n",{"evidence/profile.json":payload})
+    status,steps=run(World(root),case("cA","alice@example.com"))
+    check("T49 synthetic nested actor cannot own account",status == "INCOMPLETE" and not steps)
+
+
+def t50(root):
+    from audit.parsers import ids_from_deep, refs_from, bind_obs_for_refs
+    from audit.logparsers import _ids_from_attrs
+    for role in ("agent","actor","assignee","operator"):
+        for extractor in (ids_from_deep,_ids_from_attrs):
+            em,ui,ph,ha=extractor({role:"alice@example.com","email":"bob@example.com"})
+            check(f"T50 synthetic exact scalar role excluded {extractor.__name__} {role}",em == frozenset({"bob@example.com"}))
+        for key in (role,role+"_context"):
+            rec={"source_resource_id":"account_1",key:{"source_resource_id":"account_99"}}
+            check(f"T50 synthetic role references excluded {key}",refs_from(rec) == {"account_1"})
+    payload=export_json(profiles=[("account_2",{"email":"bob@example.com","actor_context":{"email":"alice@example.com"}})])
+    write_fixture(root,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n"
+                  "user_2,Bob B,bob@example.com,,,2026-01-01T00:00:00Z\n","",
+                  "evidence_1,evidence/profile.json,service_resource_export,2026-09-05T00:00:00Z\n",{"evidence/profile.json":payload})
+    world=World(root);status,bob=run(world,case("cB","bob@example.com"));_,alice=run(world,case("cA","alice@example.com"))
+    check("T50 mixed role metadata keeps actual subject plan",status == "INCOMPLETE" and not alice and
+          any(x["phase"] == "REMEDIATION" and x["operation"] == "DELETE_RECORD" and x["resource_id"] == "account_2" for x in bob))
+
+
+def t51(root):
+    from audit.parsers import bind_obs_for_refs
+    rec={"email":"alice@example.com","actor_context":{"source_resource_id":"account_99"},
+         "customer":{"source_resource_id":"account_1"}}
+    links=bind_obs_for_refs(rec,"evidence_1","2026-09-05T00:00:00Z","2026-09-04T00:00:00Z",
+                            frozenset({"alice@example.com"}),frozenset(),frozenset(),frozenset())
+    check("T51 synthetic role reference cannot create membership link",len(links)==1 and links[0].resource_id=="account_1")
+    for role in ("actor","actor_context"):
+        rec={"container":[{role:{"source_resource_id":"account_99"},"source_resource_id":"account_1"}]}
+        from audit.parsers import refs_from
+        check(f"T51 deeper role reference excluded {role}",refs_from(rec)=={"account_1"})
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48, t49, t50, t51):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)
