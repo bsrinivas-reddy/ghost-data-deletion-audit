@@ -812,9 +812,70 @@ def t45(root):
     check("T45 fixture preserves empty profile payload",data["service_exports"]["account_service"]["profile_lookups"][0]["profile"] == {})
 
 
+def t46(root):
+    from audit.logparsers import _state_from_attrs
+    from audit.model import CAT_PROFILE, CAT_SUPPORT_MSG, CAT_SECURITY, CAT_ANALYTICS, CAT_DATAFLOW, CAT_BACKUP
+    for cat in (CAT_PROFILE,CAT_SUPPORT_MSG,CAT_SECURITY,CAT_ANALYTICS,CAT_DATAFLOW,CAT_BACKUP):
+        for status in ("500","403","302","null","garbled",500,None):
+            attrs={"http_status":status,"rows":"0","result":"not_found","enabled":"false","restore_allowed":"false"}
+            check(f"T46 synthetic failed read cannot prove compliant state {cat} {status}",
+                  _state_from_attrs(cat,attrs) == "UNKNOWN")
+    for cat,attrs in ((CAT_PROFILE,{"result":"not_found"}),(CAT_DATAFLOW,{"enabled":"false"}),
+                      (CAT_BACKUP,{"restore_allowed":"false"}),(CAT_BACKUP,{"decision":"deny"}),
+                      (CAT_SECURITY,{"rows":"5"}),(CAT_SECURITY,{"event_code":"retained"})):
+        check(f"T46 synthetic isolated flag failure {cat} {attrs}",
+              _state_from_attrs(cat,{"http_status":"500",**attrs}) == "UNKNOWN")
+    for status,state in (("201","ABSENT"),("204","ABSENT"),("206","ABSENT"),
+                         ("200 OK","UNKNOWN"),("200 ","UNKNOWN"),("404 ","UNKNOWN")):
+        check(f"T46 synthetic explicit status syntax {status!r}",
+              _state_from_attrs(CAT_PROFILE,{"rows":"0","http_status":status}) == state)
+    for attrs,state in (({"rows":"0"},"ABSENT"),({"rows":"0","http_status":"200"},"ABSENT"),
+                        ({"rows":"0","http_status":"404"},"ABSENT"),
+                        ({"rows":"1","http_status":"200"},"PRESENT")):
+        check(f"T46 valid or statusless read preserved {attrs}",_state_from_attrs(CAT_PROFILE,attrs) == state)
+
+
+def t47(root):
+    from audit.logparsers import parse_readback_log
+    for event,system,rid in (("profile_lookup_completed","account_service","account_1"),
+                             ("attachment_pii_scan","support_platform","support_1"),("profile_lookup_completed","account_service","account_2")):
+        line=f'2026-09-04T09:00:00Z service={system} event={event} resource_id={rid} rows=0 http_status=500 subject_reference=user_1'
+        if rid == "account_2":
+            line=('2026-09-04T08:59:59Z service=account_service trace_id=tr-error event=profile_lookup_started subject_reference=user_1\n'
+                  '2026-09-04T09:00:00Z service=account_service trace_id=tr-error event=profile_lookup_completed resource_id=account_2 rows=0 http_status=500')
+        path=os.path.join(root,event + rid + ".log")
+        with open(path,"w") as f:f.write(line + "\n")
+        obs=parse_readback_log(path,"evidence_1","2026-09-04T00:00:00Z")
+        check(f"T47 synthetic failed read consumer {event}",len(obs) == 1 and obs[0].state == "UNKNOWN" and obs[0].user_ids == frozenset({"user_1"}))
+        sub=os.path.join(root,event + rid);os.makedirs(sub)
+        write_fixture(sub,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n","",
+                      "evidence_1,evidence/read.log,central_observability_export,2026-09-05T00:00:00Z\n",{"evidence/read.log":line + "\n"})
+        audit=CaseAudit(World(sub),case("cA","alice@example.com"));status,steps=audit.run()
+        check(f"T47 synthetic failed read verdict {event}",status == "INCOMPLETE" and audit.issues and
+              any(x["phase"] == "VERIFICATION" and x["resource_id"] == rid for x in steps) and
+              not any(x["phase"] in ("FINDING","REMEDIATION") for x in steps))
+
+def t48(root):
+    from audit.logparsers import parse_readback_log
+    attrs={"service":"account_service","event":"profile_lookup_completed","resource_id":"account_1",
+           "rows":"0","http_status":"500","subject_ref":"user_1"}
+    kv=" ".join(f'{k}="{v}"' for k,v in attrs.items());ts="2026-09-04T09:00:00Z"
+    variants=[f"{ts} {kv}",f"{ts} [INFO] [account_service] [tr-error] profile_lookup_completed: {kv}",
+              f"{ts} | INFO | account_service | tr-error | profile_lookup_completed | {kv}",
+              f"{ts} <15>1 node account_service tr-error - - {kv}",f"{ts} " + json.dumps(attrs),
+              f'{ts} requestId=tr-error function=account_service message="' + kv.replace('"', '\\"') + '"']
+    variants.extend(f"{ts} " + json.dumps({**attrs,"http_status":v}) for v in (500,None))
+    for i,line in enumerate(variants):
+        path=os.path.join(root,f"error-format-{i}.log")
+        with open(path,"w") as f:f.write(line + "\n")
+        obs=parse_readback_log(path,"evidence_1",ts)
+        check(f"T48 synthetic explicit error passthrough format {i}",len(obs) == 1 and
+              obs[0].state == "UNKNOWN" and obs[0].user_ids == frozenset({"user_1"}))
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

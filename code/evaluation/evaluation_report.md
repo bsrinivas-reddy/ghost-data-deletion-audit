@@ -390,7 +390,7 @@ or phone formats. The last independent review's concrete overclaims have
 counterexamples and corrections; the timestamp-row fallback received local
 code review and mutation testing, not another independent review verdict.
 
-## Account lookup error isolation (local follow-up)
+## Account lookup error isolation
 
 A JSON account lookup without a profile payload, including a null profile with
 status_code 500, was treated as ABSENT. The parser now requires status_code 404
@@ -398,7 +398,7 @@ before a null/missing profile proves absence; other such payloads are UNKNOWN.
 All 47 corpus account-export lookups supply profile and status_code fields, so
 the full output is unchanged. The fixture helper now emits this actual source
 shape. T44's missing/error checks fail before the fix; explicit 404 and present
-profile controls remain valid. This local follow-up is pending final review.
+profile controls remain valid. The subsequent review and publication are recorded below.
 
 ## Account lookup review follow-through
 
@@ -416,3 +416,35 @@ uncertainty. That existing engine behavior is not changed in this narrow fix.
 Log rows=0/status-error contradictions remain a separate path to investigate.
 Full corpus output remains byte-identical to 157ba45. All 138 custom and six
 mock checks pass; no live runtime-model call is claimed.
+
+## Failed HTTP readback isolation
+
+An explicit failed HTTP read could prove absence from rows=0 or a not-found
+result, retention from positive rows/event_code, or compliant flow/restore
+flags. A guard before all category branches now returns UNKNOWN for explicit
+statuses other than bare 2xx or 404. Missing status retains the existing format
+semantics. The 983 participant read events comprise 328 HTTP200,138 HTTP404 and
+517 statusless entries; none contains the synthetic contradiction. Predictions
+are byte-identical to 31444aa. This is counterexample hardening, not a claim that
+the corpus contained failed reads misclassified as deletion proof.
+
+T46 tests six categories, isolated result/flow/restore/retention flags, typed
+statuses and strict status syntax. T47 tests both state-reader consumers, a
+paired start/completion, subject preservation and a resource-specific final
+verification step so the uncertainty check cannot pass on an empty footprint.
+T48 tests six log syntaxes plus JSON integer/null status normalization.
+210 custom checks and six mock checks pass. Removing the guard fails 65 checks.
+
+Muse identified real test gaps and a latent non-string TypeError, all reproduced
+and corrected. Today the normalizers emit strings; str() also makes direct
+integer/null helper inputs fail closed. No live model inference was added.
+
+Explicit errors replace state proof with uncertainty, even when flags or PII
+are present. Later errors may supersede earlier proof or plans; later valid
+reads can recover state. Existing same-time ordering and 404 precedence are
+unchanged: most categories treat404 as absent, while security rows/event_code
+can still establish retention. The corpus does not establish contradictory404
+field semantics, so those cases are not silently reinterpreted here. Bare2xx
+(including204/206) are accepted; reason phrases/padded codes are UNKNOWN. These
+are parser status rules, not a claim that every remote HTTP2xx proves complete
+business semantics outside the supplied read format.

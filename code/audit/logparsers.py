@@ -52,6 +52,8 @@ LOOKUP_START = {
 
 def _state_from_attrs(cat, a):
     """Infer state from a completed-lookup attribute set."""
+    if "http_status" in a and not (re.fullmatch(r"2[0-9]{2}", str(a["http_status"])) or str(a["http_status"]) == "404"):
+        return "UNKNOWN"
     if cat == CAT_SECURITY:
         return RETAINED if a.get("rows") not in ("0", None) or a.get("event_code") else ABSENT
     if "rows" in a and a["rows"] == "0": return ABSENT
