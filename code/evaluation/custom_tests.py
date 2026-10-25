@@ -59,7 +59,7 @@ def export_json(accounts_404=(), profiles=(), audit_records=(), tickets=(),
     if accounts_404 or profiles:
         se["account_service"] = {"profile_lookups": [
             {"resource_id": r, "observed_at": captured,
-             **({"profile": p, "status_code":200} if p else {"profile":None,"status_code":404})} for r, p in
+             **({"profile": p, "status_code":200} if p is not None else {"profile":None,"status_code":404})} for r, p in
             [(r, None) for r in accounts_404] + list(profiles)]}
     if audit_records:
         se["security_service"] = {"audit_records": audit_records}
@@ -786,15 +786,35 @@ def t44(root):
     from audit.parsers import _parse_json_data
     for i,(extra,state) in enumerate((({},"UNKNOWN"),({"profile":None,"status_code":500},"UNKNOWN"),
                                       ({"profile":None,"status_code":404},"ABSENT"),
-                                      ({"profile":{"email":"alice@example.com"},"status_code":200},"PRESENT"))):
+                                      ({"profile":{"email":"alice@example.com"},"status_code":200},"PRESENT"),
+                                      ({"profile":None,"status_code":"404"},"ABSENT"),
+                                      ({"profile":None,"status_code":200},"UNKNOWN"),
+                                      ({"profile":{"email":"alice@example.com"},"status_code":404},"PRESENT"),
+                                      ({"profile":None,"status_code":410},"UNKNOWN"),
+                                      ({"profile":{},"status_code":200},"PRESENT"))):
         obs,_=_parse_json_data({"service_exports":{"account_service":{"profile_lookups":[{"resource_id":"account_1",**extra}]}}},
                                "evidence_1","2026-09-04T00:00:00Z")
         check(f"T44 missing profile is not a successful absence lookup {i}",len(obs) == 1 and obs[0].state == state)
 
 
+def t45(root):
+    from audit.model import Observation, CAT_PROFILE, BIND
+    payload=json.dumps({"service_exports":{"account_service":{"profile_lookups":[{"resource_id":"account_1","profile":None,"status_code":500}]}}})
+    write_fixture(root,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n","",
+                  "evidence_1,evidence/error.json,service_resource_export,2026-09-04T00:00:00Z\n",{"evidence/error.json":payload})
+    w=World(root)
+    w.claims=[Observation("link","activity","2026-09-03T00:00:00Z","2026-09-03T00:00:00Z","account_service","account_1",CAT_PROFILE,BIND,user_ids=frozenset({"user_1"}),claim=True)]
+    a=CaseAudit(w,case("cA","alice@example.com"));status,steps=a.run()
+    check("T45 failed lookup cannot certify member deletion",status == "INCOMPLETE" and
+          any("missing or unrecognized" in x for x in a.issues) and
+          not any(x["phase"] in ("FINDING","REMEDIATION") for x in steps))
+    data=json.loads(export_json(profiles=[("account_2",{})]))
+    check("T45 fixture preserves empty profile payload",data["service_exports"]["account_service"]["profile_lookups"][0]["profile"] == {})
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-131 checks pass across the custom fixtures in `custom_tests.py`:
+138 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -399,3 +399,20 @@ All 47 corpus account-export lookups supply profile and status_code fields, so
 the full output is unchanged. The fixture helper now emits this actual source
 shape. T44's missing/error checks fail before the fix; explicit 404 and present
 profile controls remain valid. This local follow-up is pending final review.
+
+## Account lookup review follow-through
+
+Muse found no production expansion needed for the reproduced null/error defect,
+but identified missing end-to-end and boundary assertions plus a fixture bug.
+T44 now covers string 404, null success, contradictory present/404, 410 and empty
+profile. T45 proves a member lookup error yields INCOMPLETE without invented
+findings/remediation and that the fixture preserves an empty profile dict.
+Removing the guard fails four parser checks and the end-to-end verdict check.
+
+The accepted status vocabulary remains explicit 404 only. No supplied export
+contains an error field contradicting that shape; 410 is not guessed equivalent.
+UNKNOWN can supersede earlier state and remove a proved plan in favor of
+uncertainty. That existing engine behavior is not changed in this narrow fix.
+Log rows=0/status-error contradictions remain a separate path to investigate.
+Full corpus output remains byte-identical to 157ba45. All 138 custom and six
+mock checks pass; no live runtime-model call is claimed.
