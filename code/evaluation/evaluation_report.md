@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-124 checks pass across the custom fixtures in `custom_tests.py`:
+127 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -365,3 +365,27 @@ This remains a layout heuristic, not proof for arbitrary UIs. An unrelated
 well-formed table in a ticket document can still be mistaken for a conversation;
 non-English headers and multi-ticket views can be omitted. Those limits are
 not turned into guessed COMPLETE or unsupported destructive treatment.
+
+## Final checkpoint interpretation
+
+The review iterations above describe isolated intermediate versions. The final
+rule keeps ticket references as BIND, uses support-table and attachment-property
+signals for state/category, and leaves incompatible evidence treatments as
+explicit uncertainty. A damaged time-column header can still qualify only when
+a sender/content header has at least two nearby timestamped rows. This handles
+OCR damage without hardcoding a source ID, person or case. T43 checks zero, one
+and two rows; removing this fallback fails the two-row test.
+
+The final full run changes only case_34 versus d0964c2, with the three support
+operations now DELETE-family from direct attachment-scan evidence_01 rather
+than REDACT-family inferred from a screenshot ticket reference. Counts remain
+158 COMPLETE, 350 INCOMPLETE, 10 NOT_APPLICABLE and 2,623 steps. The independent
+validator reports the one case_63 limitation described above. Sample metrics
+are unchanged. Sidecar stored records are not authoritative; every media reader
+reinterprets the cached OCR text. All 127 custom and six mock model checks pass.
+
+Remaining media limits include unrelated sender/content tables, multilingual
+headers, multiple-ticket views, OCR toolchain freshness and unstructured names
+or phone formats. The last independent review's concrete overclaims have
+counterexamples and corrections; the timestamp-row fallback received local
+code review and mutation testing, not another independent review verdict.

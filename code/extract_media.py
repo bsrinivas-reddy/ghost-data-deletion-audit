@@ -134,9 +134,11 @@ def parse_records(text, source_ext=""):
             r["category"] = "SUPPORT_ATTACHMENT"
         elif r["resource_id"].startswith("support_"):
             support_ids = {rid for rid in distinct if rid.startswith("support_")}
-            table = any(re.search(r"\b(time|date)\b", line, re.I) and re.search(r"\bsender\b", line, re.I) and
+            table = any(re.search(r"\bsender\b", line, re.I) and
                         re.search(r"\b(message|messages|lessage|content|text)\b", line, re.I) and
-                        i + 1 < len(lines) and lines[i + 1].strip() for i, line in enumerate(lines))
+                        (re.search(r"\b(time|date)\b", line, re.I) and i + 1 < len(lines) and lines[i + 1].strip()
+                         or sum(bool(re.search(r"\b[0-2]?\d:[0-5]\d\b", row)) for row in lines[i + 1:i + 9]) >= 2)
+                        for i, line in enumerate(lines))
             attachment = is_pdf and re.search(r"\battachment properties\b", text, re.I) and re.search(r"\b(upload|uploader|file)\b", text, re.I)
             if len(support_ids) != 1 or table and attachment:
                 r["state"] = "BIND"

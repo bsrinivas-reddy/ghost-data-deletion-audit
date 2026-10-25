@@ -22,6 +22,8 @@ python3 code/main.py dataset output.csv
 
 The first run extracts 15 PNG/PDF sources into an uncommitted cache. Later runs
 reuse source-hash-matched extraction. No dataset or extracted corpus is bundled.
+Media ticket references alone do not prove message state. Conflicting required
+treatments at one output address remain explicit uncertainty, not a guessed plan.
 The output is 518 rows with header `case_id,deletion_status,steps_json`.
 `output_uncertainty.md` identifies missing state evidence. INCOMPLETE is used
 conservatively where UNKNOWN would be more precise; case_63 currently lacks a
