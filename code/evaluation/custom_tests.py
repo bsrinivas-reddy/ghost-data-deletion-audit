@@ -693,9 +693,40 @@ def t36(root):
               any(x["phase"] == "REMEDIATION" and x["resource_id"] == ("support_2" if conflict else "support_1") for x in steps))
 
 
+def t37(root):
+    from extract_media import parse_records
+    for text,bind in [("Customer details account_1\nSupport reference support_2\nActivity customer replied to ticket",True),
+                      ("Support reference support_2 alice@example.com",True),
+                      ("support_2 alice@example.com\nConversation\nTime Sender Message\nCustomer says hello",False)]:
+        rows=parse_records(text,".png");r=next(x for x in rows if x["resource_id"] == "support_2")
+        check(f"T37 ticket reference is not message state bind={bind}", (r["state"] == "BIND") == bind)
+
+
+def t38(root):
+    import hashlib, pathlib, shutil, subprocess
+    work=pathlib.Path(root); code=work/"code"
+    shutil.copytree(os.path.dirname(os.path.dirname(__file__)),code,ignore=shutil.ignore_patterns("extracted","__pycache__"))
+    ds=work/"dataset";ds.mkdir()
+    write_fixture(str(ds),"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n","",
+                  "evidence_1,image.png,console,2026-09-04T00:00:00Z\n",{})
+    with open(ds/"deletion_requests.csv","w",newline="") as f:
+        row=case("c1","alice@example.com");writer=csv.DictWriter(f,fieldnames=list(row));writer.writeheader();writer.writerow(row)
+    (ds/"image.png").write_bytes(b"synthetic-source-not-image")
+    cache=code/"extracted";cache.mkdir()
+    (cache/"evidence_1.json").write_text(json.dumps({"source_sha256":hashlib.sha256((ds/"image.png").read_bytes()).hexdigest(),
+        "text":"Support reference support_2 alice@example.com", "records":[{"resource_id":"support_2","system_id":"support_platform","category":"SUPPORT_MESSAGE","state":"PRESENT","emails":["alice@example.com"]}]}))
+    out=work/"out.csv"
+    result=subprocess.run([sys.executable,str(code/"main.py"),str(ds),str(out)],capture_output=True,text=True)
+    rows=list(csv.DictReader(open(out))) if result.returncode == 0 else []
+    plans=json.loads(rows[0]["steps_json"]) if rows else []
+    check("T38 source-matched cache reparses stale records without OCR",result.returncode == 0 and
+          json.loads((cache/"evidence_1.json").read_text())["records"][0]["state"] == "BIND" and
+          rows[0]["deletion_status"] == "INCOMPLETE" and not any(x["phase"] == "REMEDIATION" for x in plans))
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

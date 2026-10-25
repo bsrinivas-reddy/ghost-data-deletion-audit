@@ -136,6 +136,10 @@ def parse_records(text, source_ext=""):
             # a support reference inside a standalone customer document is
             # the ticket's attachment (rule_06), not a shared conversation
             r["category"] = "SUPPORT_ATTACHMENT"
+        if r["resource_id"].startswith("support_") and not is_pdf:
+            support_ids = {rid for rid in distinct if rid.startswith("support_")}
+            if len(support_ids) != 1 or not re.search(r"\bconversation\b", text, re.I) or not re.search(r"\bmessage\b", text, re.I):
+                r["state"] = "BIND"
         if r["state"] is None:
             r["state"] = "PRESENT"
         for k in ("emails", "user_ids", "phones", "hashes"):

@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-107 checks pass across the custom fixtures in `custom_tests.py`:
+111 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -311,3 +311,23 @@ visible message content. The media extractor currently infers message category
 and PRESENT from that resource prefix. This provenance issue must be resolved
 before interpreting the case_34 conflict as two authoritative state categories.
 No category experiment has been promoted as of this checkpoint.
+
+## Media reference correction (isolated, review pending)
+
+Actual pixels distinguish the account console's support-ticket references from
+the dedicated support console's conversation table. PNG support mentions now
+supply BIND only unless a single support ID appears in a conversation/message
+view. This is a conservative text-layout heuristic, not proof for every UI.
+PDF attachment handling is unchanged. Cached OCR text is reparsed each run so
+parser edits cannot leave stale inferred records. T37 reference counterexamples
+fail before the change; a conversation control remains state-bearing. T38
+seeds stale records under a matching source hash and confirms reparsing without
+OCR. A fresh extraction of all 15 sources matches the reparsed cache exactly.
+
+The combined local experiment changes only case_34 versus public d0964c2:
+support_9538 is treated using attachment-scan evidence_01, not message-state
+inferred from a customer-console reference. It now calls for deleting the
+attachment rather than redacting a conversation. Full counts and 2,623 steps,
+sample metrics, and known case_63 validator limit stay unchanged. The generic
+conflict guard no longer triggers on this case because references are BIND.
+Public promotion remains held pending independent review of this media rule.
