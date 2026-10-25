@@ -720,13 +720,37 @@ def t38(root):
     rows=list(csv.DictReader(open(out))) if result.returncode == 0 else []
     plans=json.loads(rows[0]["steps_json"]) if rows else []
     check("T38 source-matched cache reparses stale records without OCR",result.returncode == 0 and
-          json.loads((cache/"evidence_1.json").read_text())["records"][0]["state"] == "BIND" and
+          json.loads((cache/"evidence_1.json").read_text())["records"][0]["state"] == "PRESENT" and
           rows[0]["deletion_status"] == "INCOMPLETE" and not any(x["phase"] == "REMEDIATION" for x in plans))
+
+
+def t39(root):
+    from extract_media import parse_records
+    variants=[("Support reference support_2 alice@example.com\nConversation tab\nSend Message button", ".png", "BIND", "SUPPORT_MESSAGE"),
+              ("support_2 alice@example.com\nMessages\nTime Sender Content\nCustomer Hello", ".png", "PRESENT", "SUPPORT_MESSAGE"),
+              ("support_2 alice@example.com\nThread\nTime Sender Text\nCustomer Hello", ".pdf", "PRESENT", "SUPPORT_MESSAGE"),
+              ("Support reference support_2 alice@example.com", ".pdf", "BIND", "SUPPORT_MESSAGE"),
+              ("support_2 alice@example.com\nAttachment properties\nFile address.pdf uploader customer", ".pdf", "PRESENT", "SUPPORT_ATTACHMENT"),
+              ("Customer details account_1\nSupport reference support_2 alice@example.com\nRelated support_3", ".png", "BIND", "SUPPORT_MESSAGE")]
+    for i,(text,ext,state,category) in enumerate(variants):
+        r=next(x for x in parse_records(text,ext) if x["resource_id"] == "support_2")
+        check(f"T39 structured support view vs reference {i}",r["state"] == state and r["category"] == category and "alice@example.com" in r["emails"])
+
+
+def t40(root):
+    from audit.engine import World
+    write_fixture(root,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n","",
+                  "evidence_1,image.png,console,2026-09-04T00:00:00Z\n",{})
+    cache=os.path.join(root,"cache");os.makedirs(cache)
+    with open(os.path.join(cache,"evidence_1.json"),"w") as f:
+        json.dump({"text":"Support reference support_2 alice@example.com", "records":[{"resource_id":"support_2","system_id":"support_platform","category":"SUPPORT_MESSAGE","state":"PRESENT","emails":["alice@example.com"]}]},f)
+    w=World(root,extracted_dir=cache)
+    check("T40 direct World media reader ignores stale inferred records",len(w.obs) == 1 and w.obs[0].state == "BIND" and w.obs[0].emails == frozenset({"alice@example.com"}))
 
 
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

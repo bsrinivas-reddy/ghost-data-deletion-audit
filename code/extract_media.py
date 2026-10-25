@@ -132,13 +132,16 @@ def parse_records(text, source_ext=""):
         r["category"] = SYSTEM_CATEGORY.get(r["system_id"], "UNKNOWN")
         if r["resource_id"].startswith("object_"):
             r["category"] = "SUPPORT_ATTACHMENT"
-        elif r["resource_id"].startswith("support_") and is_pdf:
-            # a support reference inside a standalone customer document is
-            # the ticket's attachment (rule_06), not a shared conversation
-            r["category"] = "SUPPORT_ATTACHMENT"
-        if r["resource_id"].startswith("support_") and not is_pdf:
+        elif r["resource_id"].startswith("support_"):
             support_ids = {rid for rid in distinct if rid.startswith("support_")}
-            if len(support_ids) != 1 or not re.search(r"\bconversation\b", text, re.I) or not re.search(r"\bmessage\b", text, re.I):
+            table = any(re.search(r"\bsender\b", line, re.I) and
+                        re.search(r"\b(message|messages|lessage|content|text)\b", line, re.I) for line in lines)
+            attachment = is_pdf and re.search(r"\battachment properties\b", text, re.I) and re.search(r"\b(upload|uploader|file)\b", text, re.I)
+            if len(support_ids) == 1 and table:
+                r["category"] = "SUPPORT_MESSAGE"
+            elif attachment:
+                r["category"] = "SUPPORT_ATTACHMENT"
+            else:
                 r["state"] = "BIND"
         if r["state"] is None:
             r["state"] = "PRESENT"

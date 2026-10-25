@@ -136,8 +136,10 @@ class World:
             raise RuntimeError(f"Missing media extraction for {fid}; run code/main.py to generate it")
         with open(sidecar) as f:
             data = json.load(f)
+        from extract_media import parse_records
+        records = parse_records(data["text"], os.path.splitext(meta["file_path"])[1].lower())
         out = []
-        for r in data.get("records", []):
+        for r in records:
             cat = r["category"]
             out.append(Observation(
                 fid, "evidence", meta["captured_at"], r.get("observed_at", meta["captured_at"]),

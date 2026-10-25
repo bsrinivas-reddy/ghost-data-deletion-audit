@@ -36,15 +36,8 @@ def main():
                     cached = json.load(open(sidecar))
                 except (OSError, ValueError):
                     cached = {}
-                if cached.get("source_sha256") != source_hash or "text" not in cached:
+                if cached.get("source_sha256") != source_hash or not isinstance(cached.get("text"), str) or not cached["text"].strip():
                     need.append(r["file_id"])
-                else:
-                    from extract_media import parse_records
-                    cached["records"] = parse_records(cached["text"], os.path.splitext(r["file_path"])[1].lower())
-                    for record in cached["records"]:
-                        record["observed_at"] = r["captured_at"]
-                    with open(sidecar, "w") as g:
-                        json.dump(cached, g, indent=2)
     if need:
         subprocess.run([sys.executable,
                         os.path.join(root, "code", "extract_media.py"),

@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-111 checks pass across the custom fixtures in `custom_tests.py`:
+118 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -331,3 +331,21 @@ attachment rather than redacting a conversation. Full counts and 2,623 steps,
 sample metrics, and known case_63 validator limit stay unchanged. The generic
 conflict guard no longer triggers on this case because references are BIND.
 Public promotion remains held pending independent review of this media rule.
+
+## Media review follow-through (isolated)
+
+Muse found the first word gate could accept UI chrome and reject plural labels;
+PDF extension alone also mislabeled transcripts as attachments. The revised
+experiment requires a Sender plus Message/Content/Text table-header signal for
+a single support ID, or PDF attachment-properties evidence for attachment type.
+Bare references stay BIND. T39 exercises chrome, plural tables, PDF transcripts,
+PDF references, attachment properties, multiple IDs and identifier preservation.
+
+Cached text is now reparsed at World._media_obs, not rewritten in main. Both
+the CLI and direct World callers see current parser rules, without repeated
+non-atomic cache writes. T38 and T40 fail when stale stored records are used.
+Main treats non-string/empty cached text as requiring fresh extraction. This
+remains a conservative layout heuristic: multi-ticket views, non-English table
+headers and unstructured explicit-state references are not fully supported.
+Only case_34 differs from the public checkpoint, with the same status/step totals.
+Independent review covered the prior version; these corrections need final review.
