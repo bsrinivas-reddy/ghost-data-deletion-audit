@@ -503,3 +503,23 @@ proved: download unavailability can differ from object deletion in other
 systems. No supplied export uses the flag, so no invented producer rule is
 used to expand this fix. UNKNOWN can replace an actionable plan with uncertainty;
 that remains preferable to invented proof. Runtime model calls remain zero.
+
+## Download denial is not export deletion proof
+
+The preceding typed-flag section preserved explicit False-to-ABSENT as a
+preexisting premise. Further participant-source inspection refutes it:
+customer_export_jobs_20260914.json lists an expired export with filename and
+included sections while download_available is false. USER_EXPORT policy is
+Always DELETE, not disable downloads. Service-export False and log false flags
+now produce UNKNOWN rather than deletion proof. Genuine not-found result,
+HTTP404 or zero-row proofs remain unchanged. Missing/true flag behavior stays.
+
+T53 covers both textual flag names, JSON final verdict with an uncited bound
+resource check, and preservation of independent absence signals.266 custom and
+22 offline checks pass. Restoring the JSON false-absence mapping fails2 checks;
+restoring the log mapping fails2. Muse confirmed the source-grounded correction.
+The9 service exports omit this flag and13 export log reads are available=true,
+so full predictions are unchanged. The actual false listing already used the
+records path and was PRESENT before and after. No hidden answers were used.
+Unknown downloadability can remove a plan in favor of uncertainty; it cannot
+prove deletion. This corrects the prior premise, not a new corpus accuracy claim.

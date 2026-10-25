@@ -928,7 +928,7 @@ def t51(root):
 
 def t52(root):
     from audit.parsers import _parse_json_data
-    variants=[({"download_available":False},"ABSENT"),({"download_available":True},"PRESENT"),
+    variants=[({"download_available":False},"UNKNOWN"),({"download_available":True},"PRESENT"),
               ({"download_available":None},"UNKNOWN"),({"download_available":0},"UNKNOWN"),
               ({"download_available":""},"UNKNOWN"),({"download_available":"false"},"UNKNOWN"),({"download_available":1},"UNKNOWN"),
               ({"download_available":1.0},"UNKNOWN"),({},"PRESENT")]
@@ -944,9 +944,25 @@ def t52(root):
           not any(x["phase"] in ("FINDING","REMEDIATION") for x in steps))
 
 
+def t53(root):
+    from audit.logparsers import _state_from_attrs
+    from audit.model import CAT_EXPORT
+    for attr in ("download_available","available"):
+        check(f"T53 synthetic unavailable download is not absence {attr}",_state_from_attrs(CAT_EXPORT,{attr:"false"})=="UNKNOWN")
+        check(f"T53 positive download remains present {attr}",_state_from_attrs(CAT_EXPORT,{attr:"true"})=="PRESENT")
+    for proof in ({"rows":"0"},{"http_status":"404"},{"result":"not_found"}):
+        check(f"T53 independent absence proof preserved {proof}",_state_from_attrs(CAT_EXPORT,{"available":"false",**proof})=="ABSENT")
+    payload=json.dumps({"service_exports":{"export_service":{"exports":[{"resource_id":"export_1","owner_email":"alice@example.com","download_available":False,"object_key":"retained.zip"}]}}})
+    write_fixture(root,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n","",
+                  "evidence_1,evidence/export.json,service_resource_export,2026-09-05T00:00:00Z\n",{"evidence/export.json":payload})
+    audit=CaseAudit(World(root),case("cA","alice@example.com"));status,steps=audit.run()
+    check("T53 synthetic denied download cannot certify deleted export",status=="INCOMPLETE" and audit.issues and
+          any(x["phase"]=="VERIFICATION" and x["resource_id"]=="export_1" and not x["evidence_id"] for x in steps))
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48, t49, t50, t51, t52):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42, t43, t44, t45, t46, t47, t48, t49, t50, t51, t52, t53):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)

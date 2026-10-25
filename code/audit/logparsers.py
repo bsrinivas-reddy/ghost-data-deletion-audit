@@ -89,7 +89,7 @@ def _state_from_attrs(cat, a):
         return CLEAN
     if cat == CAT_EXPORT:
         if a.get("download_available") == "false" or a.get("available") == "false":
-            return ABSENT
+            return "UNKNOWN"
         return PRESENT
     return PRESENT
 
