@@ -56,7 +56,7 @@ validate every extracted fact, or establish completeness of discovery.
 
 ## Participant-created regression cases
 
-118 checks pass across the custom fixtures in `custom_tests.py`:
+124 checks pass across the custom fixtures in `custom_tests.py`:
 
 - T1: shared-window, unattributed workflow claims bind to neither user.
 - T2: lookalike-email decoy does not bind.
@@ -349,3 +349,19 @@ remains a conservative layout heuristic: multi-ticket views, non-English table
 headers and unstructured explicit-state references are not fully supported.
 Only case_34 differs from the public checkpoint, with the same status/step totals.
 Independent review covered the prior version; these corrections need final review.
+
+## Final media-review corrections
+
+Final review identified multi-ID PDF properties, simultaneous conversation and
+attachment signals, empty tables and same-line button chrome as overclaims.
+The rule now requires a single support ID, Time/Date plus Sender and content
+column in a header, and a following nonempty row. Simultaneous conversation and
+attachment signals stay BIND. T41 covers all four reviewed counterexamples.
+T42 checks a genuine conversation still produces REDACT through the reader and
+text-less caches give a clear extraction-regeneration error. Stored inferred
+records are not used as fallback because that would revive stale-state claims.
+
+This remains a layout heuristic, not proof for arbitrary UIs. An unrelated
+well-formed table in a ticket document can still be mistaken for a conversation;
+non-English headers and multi-ticket views can be omitted. Those limits are
+not turned into guessed COMPLETE or unsupported destructive treatment.

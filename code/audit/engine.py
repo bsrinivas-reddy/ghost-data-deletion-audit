@@ -136,6 +136,8 @@ class World:
             raise RuntimeError(f"Missing media extraction for {fid}; run code/main.py to generate it")
         with open(sidecar) as f:
             data = json.load(f)
+        if not isinstance(data.get("text"), str) or not data["text"].strip():
+            raise RuntimeError(f"Missing valid media text for {fid}; run code/main.py to regenerate extraction")
         from extract_media import parse_records
         records = parse_records(data["text"], os.path.splitext(meta["file_path"])[1].lower())
         out = []

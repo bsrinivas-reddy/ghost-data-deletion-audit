@@ -748,9 +748,35 @@ def t40(root):
     check("T40 direct World media reader ignores stale inferred records",len(w.obs) == 1 and w.obs[0].state == "BIND" and w.obs[0].emails == frozenset({"alice@example.com"}))
 
 
+def t41(root):
+    from extract_media import parse_records
+    for i,text in enumerate(("support_2 alice@example.com\nsupport_3\nAttachment properties\nFile address.pdf uploader customer",
+                             "support_2 alice@example.com\nTime Sender Message\nCustomer Hello\nAttachment properties\nFile address.pdf uploader customer",
+                             "support_2 alice@example.com\nTime Sender Message",
+                             "support_2 alice@example.com\nSender Message button")):
+        r=next(x for x in parse_records(text,".pdf") if x["resource_id"] == "support_2")
+        check(f"T41 ambiguous or empty support view {i}",r["state"] == "BIND")
+
+
+def t42(root):
+    write_fixture(root,"user_1,Alice A,alice@example.com,,,2026-01-01T00:00:00Z\n","",
+                  "evidence_1,image.png,console,2026-09-04T00:00:00Z\n",{})
+    cache=os.path.join(root,"cache");os.makedirs(cache);path=os.path.join(cache,"evidence_1.json")
+    with open(path,"w") as f:json.dump({"text":"support_2 alice@example.com\nTime Sender Message\nCustomer Hello", "records":[]},f)
+    status,steps=run(World(root,extracted_dir=cache),case("cA","alice@example.com"))
+    check("T42 genuine conversation survives reader reparsing",status == "INCOMPLETE" and
+          any(x["operation"] == "REDACT_RECORD" and x["resource_id"] == "support_2" for x in steps))
+    with open(path,"w") as f:json.dump({"records":[{"state":"PRESENT"}]},f)
+    try:
+        World(root,extracted_dir=cache)
+    except RuntimeError as exc:
+        check("T42 missing media text gives regeneration error","regenerate extraction" in str(exc))
+    else:check("T42 missing media text gives regeneration error",False)
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
-        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40):
+        for fn in (t1, t2, t3, t4, t5, t5b, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19, t20, t21, t22, t23, t24, t25, t26, t27, t28, t29, t30, t31, t32, t33, t34, t35, t36, t37, t38, t39, t40, t41, t42):
             sub = os.path.join(d, fn.__name__)
             os.makedirs(sub)
             fn(sub)
